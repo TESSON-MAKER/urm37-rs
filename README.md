@@ -68,9 +68,9 @@ The documentation includes patterns for:
 ```toml
 [dependencies]
 # Choose the features you need:
-urm37 = { version = "0.4", features = ["uart-async"] }
+urm37 = { version = "0.6", features = ["uart-async"] }
 # or
-urm37 = { version = "0.4", features = ["uart", "pwm", "analog"] }
+urm37 = { version = "0.6", features = ["uart", "pwm", "analog"] }
 ```
 
 ---

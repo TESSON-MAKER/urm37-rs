@@ -18,7 +18,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! urm37 = { version = "0.4", features = ["uart-async"] }
+//! urm37 = { version = "0.6", features = ["uart-async"] }
 //! ```
 //!
 //! ```ignore
