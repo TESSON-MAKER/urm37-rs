@@ -24,30 +24,22 @@ Supports all interface modes: synchronous/asynchronous UART, PWM trigger, and an
 
 ---
 
-## Quick Examples
+## Real-world STM32 Examples
 
-### Educational Examples (no hardware required)
+All examples use **Embassy** async runtime and **defmt** for logging:
+
+| Example | Mode | Features |
+|---------|------|----------|
+| **stm32_uart_async** | UART async | Distance + temperature reading |
+| **stm32_pwm_mode** | PWM trigger | Input capture with high precision |
+| **stm32_analog_mode** | ADC | Voltage-to-distance conversion |
+| **stm32_eeprom_config** | UART | Configuration & threshold setup |
+| **stm32_complete** | UART | Production-ready with error handling |
+
+See **[examples/STM32_EXAMPLES.md](examples/STM32_EXAMPLES.md)** for detailed hardware wiring, configuration, and troubleshooting.
+
+Quick start:
 ```bash
-# Protocol layer demo
-cargo run --example protocol
-
-# Conversion tables & calculations
-cargo run --example analog_mode --features analog
-cargo run --example pwm_mode --features pwm
-cargo run --example uart_sync --features uart
-cargo run --example eeprom_config
-```
-
-### Real STM32 Examples (with Embassy)
-See **[examples/STM32_EXAMPLES.md](examples/STM32_EXAMPLES.md)** for:
-- `stm32_uart_async` — Simple async UART distance reading
-- `stm32_pwm_mode` — Precise PWM trigger with input capture
-- `stm32_analog_mode` — ADC-based distance measurement
-- `stm32_eeprom_config` — Sensor configuration examples
-- `stm32_complete` — Production-ready with error handling
-
-```bash
-# Build for STM32L4 (example)
 cargo build --example stm32_uart_async --target thumbv7em-none-eabihf --features uart-async
 ```
 

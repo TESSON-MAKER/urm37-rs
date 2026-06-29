@@ -28,12 +28,14 @@
 #![no_main]
 
 use embassy_executor::Spawner;
+use embassy_stm32::bind;
 use embassy_stm32::gpio::{Input, Pull};
 use embassy_stm32::usart::{Config, Uart};
-use embassy_stm32::Peripherals;
+use embassy_stm32::{interrupt, Peripherals};
 use embassy_time::{Timer, Instant};
 use urm37::uart_async::Urm37UartAsync;
-use urm37::Error;
+
+bind!(USART3, embassy_stm32::usart::InterruptHandler::<embassy_stm32::usart::Async>);
 
 const MEASUREMENT_INTERVAL_MS: u64 = 1000;
 const MAX_RETRIES: u8 = 3;
@@ -83,19 +85,10 @@ impl MeasurementStats {
 async fn main(_spawner: Spawner) {
     let p = Peripherals::take();
 
-    // Configure USART3
     let mut config = Config::default();
     config.baudrate = 9600;
 
-    let uart = Uart::new_blocking(
-        p.USART3,
-        p.PB11,
-        p.PB10,
-        p.DMA1_CH3,
-        p.DMA1_CH2,
-        config,
-    );
-
+    let uart = Uart::new(p.USART3, p.PB11, p.PB10, interrupt::USART3, config);
     let mut sensor = Urm37UartAsync::new(uart);
 
     // Optional: Configure COMP threshold detection
@@ -144,10 +137,7 @@ async fn main(_spawner: Spawner) {
     }
 }
 
-async fn initialize_sensor<UART, E>(sensor: &mut Urm37UartAsync<UART>)
-where
-    UART: embassy_io_async::Read<Error = E> + embassy_io_async::Write<Error = E>,
-    E: core::fmt::Debug,
+async fn initialize_sensor(sensor: &mut Urm37UartAsync<Uart<'static, embassy_stm32::usart::Async>>)
 {
     defmt::info!("Initializing sensor configuration...");
 
@@ -191,13 +181,10 @@ where
     defmt::info!("✓ Sensor ready");
 }
 
-async fn perform_measurement<UART, E>(
-    sensor: &mut Urm37UartAsync<UART>,
+async fn perform_measurement(
+    sensor: &mut Urm37UartAsync<Uart<'static, embassy_stm32::usart::Async>>,
     stats: &mut MeasurementStats,
 )
-where
-    UART: embassy_io_async::Read<Error = E> + embassy_io_async::Write<Error = E>,
-    E: core::fmt::Debug,
 {
     // Attempt measurement with retries
     for attempt in 0..MAX_RETRIES {
@@ -231,7 +218,6 @@ where
     }
 }
 
-// Panic handler
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     defmt::error!("!!! PANIC !!!");
