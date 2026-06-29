@@ -1,22 +1,24 @@
 //! # urm37
 //!
-//! `no_std` embedded driver for the **DFRobot URM37 V5.0** ultrasonic distance sensor
-//! (SKU: SEN0001).
+//! `no_std` embedded driver for the **DFRobot URM37 V5.0** ultrasonic distance sensor (SKU: SEN0001).
+//!
+//! Supports all interface modes with comprehensive EEPROM configuration, temperature reading,
+//! and zero dynamic memory allocation.
 //!
 //! ## Supported modes
 //!
-//! | Mode | Feature | HAL interface |
-//! |------|---------|---------------|
-//! | Synchronous UART | `uart` | `embedded-io` |
-//! | Asynchronous UART | `uart-async` | `embedded-io-async` |
-//! | PWM trigger | `pwm` | GPIO + timer (caller-managed) |
-//! | Analog | `analog` | ADC (caller-managed) |
+//! | Mode | Feature | HAL | Notes |
+//! |------|---------|-----|-------|
+//! | Synchronous UART | `uart` | `embedded-io` | Simple command-response protocol |
+//! | Asynchronous UART | `uart-async` | `embedded-io-async` | Embassy/RTIC compatible |
+//! | PWM trigger | `pwm` | GPIO + timer | Caller measures ECHO pulse width |
+//! | Analog | `analog` | ADC | Voltage proportional to distance |
 //!
 //! ## Quick start (async UART with Embassy)
 //!
 //! ```toml
 //! [dependencies]
-//! urm37 = { version = "0.3", features = ["uart-async"] }
+//! urm37 = { version = "0.4", features = ["uart-async"] }
 //! ```
 //!
 //! ```ignore

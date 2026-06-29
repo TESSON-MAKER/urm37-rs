@@ -2,7 +2,6 @@
 ///
 /// The URM37 has 123 bytes of non-volatile memory (EEPROM).
 /// Addresses 0x00..=0x04 are documented by DFRobot.
-
 use crate::protocol;
 
 /// Documented EEPROM registers.

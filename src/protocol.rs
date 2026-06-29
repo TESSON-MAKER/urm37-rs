@@ -1,8 +1,8 @@
-/// Encoding and decoding of URM37 UART frames.
-///
-/// Protocol: every command and response is exactly 4 bytes.
-/// Format: [CMD, DATA0, DATA1, SUM]
-/// SUM = low byte of (CMD + DATA0 + DATA1)
+//! Encoding and decoding of URM37 UART frames.
+//!
+//! Protocol: every command and response is exactly 4 bytes.
+//! Format: [CMD, DATA0, DATA1, SUM]
+//! SUM = low byte of (CMD + DATA0 + DATA1)
 
 // ── Command bytes ─────────────────────────────────────────────────────────────
 

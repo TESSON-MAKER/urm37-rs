@@ -80,7 +80,7 @@ where
     ///
     /// * `delay`        — An async delay provider (`embedded_hal_async::delay::DelayNs`).
     /// * `measure_echo` — An async closure that measures the ECHO pulse width in µs.
-    ///                    Use your HAL's input capture or timer peripheral here.
+    ///   Use your HAL's input capture or timer peripheral here.
     ///
     /// # Returns
     ///

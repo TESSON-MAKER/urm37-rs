@@ -24,6 +24,29 @@ Supports all interface modes: synchronous/asynchronous UART, PWM trigger, and an
 
 ---
 
+## Quick Examples
+
+All examples compile and run without hardware:
+
+```bash
+# Protocol layer (no dependencies)
+cargo run --example protocol
+
+# Analog mode conversions
+cargo run --example analog_mode --features analog
+
+# PWM trigger mode conversions
+cargo run --example pwm_mode --features pwm
+
+# Synchronous UART (no hardware required)
+cargo run --example uart_sync --features uart
+
+# EEPROM configuration examples
+cargo run --example eeprom_config
+```
+
+---
+
 ## Wiring
 
 | URM37 Pin | Description                              |
@@ -48,9 +71,9 @@ Supports all interface modes: synchronous/asynchronous UART, PWM trigger, and an
 ```toml
 [dependencies]
 # Choose the features you need:
-urm37 = { version = "0.1", features = ["uart-async"] }
+urm37 = { version = "0.4", features = ["uart-async"] }
 # or
-urm37 = { version = "0.1", features = ["uart", "pwm", "analog"] }
+urm37 = { version = "0.4", features = ["uart", "pwm", "analog"] }
 ```
 
 ---

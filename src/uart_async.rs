@@ -100,15 +100,15 @@ where
     // ── Internal ──────────────────────────────────────────────────────────────
 
     async fn transact(&mut self, cmd: &[u8; 4]) -> Result<[u8; 4], Error<E>> {
-    self.uart.write_all(cmd).await.map_err(Error::Bus)?;
+        self.uart.write_all(cmd).await.map_err(Error::Bus)?;
 
-    let mut buf = [0u8; 4];
-    self.uart.read_exact(&mut buf).await.map_err(|e| match e {
-        ReadExactError::Other(e) => Error::Bus(e),
-        ReadExactError::UnexpectedEof => Error::Timeout,
-    })?;
+        let mut buf = [0u8; 4];
+        self.uart.read_exact(&mut buf).await.map_err(|e| match e {
+            ReadExactError::Other(e) => Error::Bus(e),
+            ReadExactError::UnexpectedEof => Error::Timeout,
+        })?;
 
-    validate_checksum(&buf).map_err(|(expected, got)| Error::ChecksumMismatch { expected, got })?;
-    Ok(buf)
-}
+        validate_checksum(&buf).map_err(|(expected, got)| Error::ChecksumMismatch { expected, got })?;
+        Ok(buf)
+    }
 }
