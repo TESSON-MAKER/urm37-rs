@@ -16,7 +16,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! urm37 = { version = "0.1", features = ["uart-async"] }
+//! urm37 = { version = "0.3", features = ["uart-async"] }
 //! ```
 //!
 //! ```ignore
@@ -29,8 +29,10 @@
 //!
 //! ## PWM mode (Embassy, STM32)
 //!
-//! The driver manages the TRIG pin. Measuring the ECHO pulse width is the
-//! caller's responsibility and depends on the HAL and timer available.
+//! The driver manages the TRIG pin and exposes a [`pwm::Urm37Pwm::measure`] method
+//! that accepts an async closure for the ECHO pulse measurement.
+//! Measuring the pulse width is the caller's responsibility and depends on the
+//! HAL and timer peripheral available.
 //!
 //! The recommended approach on STM32 with Embassy uses two input-capture
 //! channels on the same timer with opposite polarities, joined concurrently:
@@ -50,8 +52,8 @@
 //!
 //! let mut ic = InputCapture::new(
 //!     p.TIM2,
-//!     Some(CapturePin::new_ch1(p.PA5)), // front montant
-//!     Some(CapturePin::new_ch2(p.PA1)), // front descendant
+//!     Some(CapturePin::new_ch1(p.PA5)), // rising edge
+//!     Some(CapturePin::new_ch2(p.PA1)), // falling edge
 //!     None,
 //!     None,
 //!     hz(1_000_000), // 1 tick = 1 µs
@@ -62,18 +64,18 @@
 //! ic.set_input_capture_polarity(Channel::Ch2, InputCapturePolarity::Falling);
 //!
 //! loop {
-//!     sensor.trigger(&mut Delay).await.unwrap();
+//!     let distance = sensor.measure(&mut Delay, || async {
+//!         // Capture both edges concurrently and compute the pulse width.
+//!         let (t_rise, t_fall) = join(
+//!             ic.capture(Channel::Ch1),
+//!             ic.capture(Channel::Ch2),
+//!         ).await;
+//!         t_fall.wrapping_sub(t_rise)
+//!     }).await.unwrap();
 //!
-//!     let (t_rise, t_fall) = join(
-//!         ic.capture(Channel::Ch1),
-//!         ic.capture(Channel::Ch2),
-//!     ).await;
-//!
-//!     let pulse_us = t_fall.wrapping_sub(t_rise);
-//!
-//!     match sensor.calculate_distance(pulse_us) {
+//!     match distance {
 //!         Some(cm) => defmt::info!("Distance: {} cm", cm),
-//!         None     => defmt::warn!("Hors plage ou lecture invalide"),
+//!         None     => defmt::warn!("Out of range or invalid reading"),
 //!     }
 //!
 //!     Timer::after_millis(100).await;
@@ -95,14 +97,14 @@
 //! let raw: u16 = adc.read(&mut pin)?;
 //! match adc_to_distance_cm(raw, 4095) {
 //!     Some(cm) => defmt::info!("Distance: {} cm", cm),
-//!     None     => defmt::warn!("Hors plage"),
+//!     None     => defmt::warn!("Out of range"),
 //! }
 //!
 //! // 10-bit ADC (max = 1023), VCC = 5 V
 //! let raw: u16 = adc.read(&mut pin)?;
 //! match adc_to_distance_cm(raw, 1023) {
 //!     Some(cm) => defmt::info!("Distance: {} cm", cm),
-//!     None     => defmt::warn!("Hors plage"),
+//!     None     => defmt::warn!("Out of range"),
 //! }
 //! ```
 
