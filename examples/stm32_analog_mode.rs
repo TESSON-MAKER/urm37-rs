@@ -40,3 +40,9 @@
 //! - Simplest wiring
 //! - Single ADC input
 //! - Linear 0V→Vcc mapping
+
+fn main() {
+    println!("This is a pseudo-code example.");
+    println!("See the documentation above for the analog ADC pattern.");
+    println!("Adapt to your STM32 board: https://docs.embassy.dev/");
+}

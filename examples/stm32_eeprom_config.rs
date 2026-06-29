@@ -34,3 +34,9 @@
 //! - `set_auto_mode(interval)` - Enable auto-measurement (interval in units of 25ms)
 //! - `set_passive_mode()` - Return to on-demand measurement mode
 //! - `eeprom_read/write()` - Direct EEPROM register access
+
+fn main() {
+    println!("This is a pseudo-code example.");
+    println!("See the documentation above for the EEPROM configuration pattern.");
+    println!("Adapt to your STM32 board: https://docs.embassy.dev/");
+}

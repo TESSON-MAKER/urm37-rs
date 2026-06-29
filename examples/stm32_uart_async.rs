@@ -38,3 +38,9 @@
 //! cargo build --example stm32_uart_async --target thumbv7em-none-eabihf --features uart-async
 //! ```
 //! (Note: Requires board support package and memory.x configuration)
+
+fn main() {
+    println!("This is a pseudo-code example.");
+    println!("See the documentation above for the async UART pattern.");
+    println!("Adapt to your STM32 board: https://docs.embassy.dev/");
+}

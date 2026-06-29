@@ -69,3 +69,9 @@
 //! - Connect URM37 COMP output to GPIO input
 //! - Detect when distance threshold is exceeded
 //! - Useful for proximity alerts
+
+fn main() {
+    println!("This is a pseudo-code example showing production patterns.");
+    println!("See the documentation above for retry logic and statistics.");
+    println!("Adapt to your STM32 board: https://docs.embassy.dev/");
+}

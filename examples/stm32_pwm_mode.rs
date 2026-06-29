@@ -42,3 +42,9 @@
 //! - Pulse width formula: distance (cm) = pulse width (µs) / 50
 //! - Dual-edge capture: concurrent rising/falling measurement
 //! - Requires accurate timer: use input capture, not GPIO polling
+
+fn main() {
+    println!("This is a pseudo-code example.");
+    println!("See the documentation above for the PWM trigger pattern.");
+    println!("Adapt to your STM32 board: https://docs.embassy.dev/");
+}
