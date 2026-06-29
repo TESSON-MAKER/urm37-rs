@@ -24,24 +24,23 @@ Supports all interface modes: synchronous/asynchronous UART, PWM trigger, and an
 
 ---
 
-## Real-world STM32 Examples
+## Integration with STM32 & Embassy
 
-All examples use **Embassy** async runtime and **defmt** for logging:
+See **[examples/STM32_EXAMPLES.md](examples/STM32_EXAMPLES.md)** for:
 
-| Example | Mode | Features |
-|---------|------|----------|
-| **stm32_uart_async** | UART async | Distance + temperature reading |
-| **stm32_pwm_mode** | PWM trigger | Input capture with high precision |
-| **stm32_analog_mode** | ADC | Voltage-to-distance conversion |
-| **stm32_eeprom_config** | UART | Configuration & threshold setup |
-| **stm32_complete** | UART | Production-ready with error handling |
+- 5 real-world integration patterns (UART, PWM, ADC, configuration)
+- Hardware wiring diagrams for each mode
+- Build and flash instructions
+- Troubleshooting guide
+- Performance characteristics
+- Board-specific setup examples
 
-See **[examples/STM32_EXAMPLES.md](examples/STM32_EXAMPLES.md)** for detailed hardware wiring, configuration, and troubleshooting.
-
-Quick start:
-```bash
-cargo build --example stm32_uart_async --target thumbv7em-none-eabihf --features uart-async
-```
+The documentation includes patterns for:
+- **Async UART** - Simple distance & temperature reading
+- **PWM mode** - High-precision input capture measurements
+- **Analog/ADC** - Voltage-to-distance conversion
+- **EEPROM config** - Sensor threshold and mode setup
+- **Production code** - Error handling, retries, statistics
 
 ---
 
