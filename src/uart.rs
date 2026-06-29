@@ -9,7 +9,7 @@
 //! let temp_tenth_c   = sensor.read_temperature()?;
 //! ```
 
-use embedded_io::{Read, Write};
+use embedded_io::{Read, ReadExactError, Write};
 
 use crate::eeprom::EepromRegister;
 use crate::error::Error;
@@ -104,12 +104,12 @@ where
         self.uart.write_all(cmd).map_err(Error::Bus)?;
 
         let mut buf = [0u8; 4];
-        self.uart.read_exact(&mut buf).map_err(Error::Bus)?;
-
-        validate_checksum(&buf).map_err(|(expected, got)| {
-            Error::ChecksumMismatch { expected, got }
+        self.uart.read_exact(&mut buf).map_err(|e| match e {
+            ReadExactError::Other(e) => Error::Bus(e),
+            ReadExactError::UnexpectedEof => Error::Timeout,
         })?;
 
+        validate_checksum(&buf).map_err(|(expected, got)| Error::ChecksumMismatch { expected, got })?;
         Ok(buf)
     }
 }

@@ -9,6 +9,7 @@
 //! let temp    = sensor.read_temperature().await?;
 //! ```
 
+use embedded_io::ReadExactError;
 use embedded_io_async::{Read, Write};
 
 use crate::eeprom::EepromRegister;
@@ -65,7 +66,7 @@ where
 
     /// Writes an internal EEPROM register (async).
     ///
-    /// ⚠️ EEPROM values persist across power cycles.
+    /// WARNING: EEPROM values persist across power cycles.
     /// Avoid writing in a tight loop — EEPROM endurance is limited.
     pub async fn eeprom_write(&mut self, reg: EepromRegister, value: u8) -> Result<(), Error<E>> {
         let cmd = protocol::frame_eeprom_write(reg.address(), value);
@@ -99,15 +100,15 @@ where
     // ── Internal ──────────────────────────────────────────────────────────────
 
     async fn transact(&mut self, cmd: &[u8; 4]) -> Result<[u8; 4], Error<E>> {
-        self.uart.write_all(cmd).await.map_err(Error::Bus)?;
+    self.uart.write_all(cmd).await.map_err(Error::Bus)?;
 
-        let mut buf = [0u8; 4];
-        self.uart.read_exact(&mut buf).await.map_err(Error::Bus)?;
+    let mut buf = [0u8; 4];
+    self.uart.read_exact(&mut buf).await.map_err(|e| match e {
+        ReadExactError::Other(e) => Error::Bus(e),
+        ReadExactError::UnexpectedEof => Error::Timeout,
+    })?;
 
-        validate_checksum(&buf).map_err(|(expected, got)| {
-            Error::ChecksumMismatch { expected, got }
-        })?;
-
-        Ok(buf)
-    }
+    validate_checksum(&buf).map_err(|(expected, got)| Error::ChecksumMismatch { expected, got })?;
+    Ok(buf)
+}
 }

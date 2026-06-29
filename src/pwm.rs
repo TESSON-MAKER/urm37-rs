@@ -26,6 +26,9 @@
 //! }
 //! ```
 
+use embedded_hal::digital::OutputPin;
+use embedded_hal_async::delay::DelayNs;
+
 // ── PWM protocol constants ────────────────────────────────────────────────────
 
 /// Pulse width representing 1 cm in PWM mode (µs per cm).
@@ -37,6 +40,41 @@ pub const MAX_VALID_PULSE_US: u32 = 800 * US_PER_CM; // 40 000 µs
 /// Pulse width returned by the sensor for an invalid (out-of-range) reading.
 /// Per the datasheet: 50 000 µs = out of range.
 pub const INVALID_PULSE_US: u32 = 50_000;
+
+// ── Driver Structure ──────────────────────────────────────────────────────────
+
+/// High-level driver wrapper for the URM37 sensor using PWM/Pulse mode.
+pub struct Urm37Pwm<TRIG> {
+    trig_pin: TRIG,
+}
+
+impl<TRIG> Urm37Pwm<TRIG>
+where
+    TRIG: OutputPin,
+{
+    /// Creates a new `Urm37Pwm` instance.
+    pub fn new(mut trig_pin: TRIG) -> Result<Self, TRIG::Error> {
+        // Enforce the initial High state required by the protocol
+        trig_pin.set_high()?;
+        Ok(Self { trig_pin })
+    }
+
+    /// Triggers the sensor measurement by driving the TRIG pin low for 15 µs.
+    pub async fn trigger<D>(&mut self, delay: &mut D) -> Result<(), TRIG::Error>
+    where
+        D: DelayNs,
+    {
+        self.trig_pin.set_low()?;
+        delay.delay_us(15).await; // Safely covers the > 1 µs requirement
+        self.trig_pin.set_high()?;
+        Ok(())
+    }
+
+    /// Convenience method to convert an externally measured pulse width.
+    pub fn calculate_distance(&self, pulse_us: u32) -> Option<u16> {
+        pulse_to_distance_cm(pulse_us)
+    }
+}
 
 // ── Conversion ────────────────────────────────────────────────────────────────
 
