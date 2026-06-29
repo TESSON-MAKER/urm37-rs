@@ -34,7 +34,7 @@ use core::future::Future;
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 
-// ── PWM protocol constants ────────────────────────────────────────────────────
+// PWM protocol constants
 
 /// Pulse width per centimetre in PWM mode (µs/cm).
 pub const US_PER_CM: u32 = 50;
@@ -48,7 +48,7 @@ pub const MAX_VALID_PULSE_US: u32 = 800 * US_PER_CM;
 /// Sentinel pulse width indicating an out-of-range reading (per datasheet).
 pub const INVALID_PULSE_US: u32 = 50_000;
 
-// ── Driver ────────────────────────────────────────────────────────────────────
+// Driver
 
 /// URM37 driver in PWM trigger mode.
 ///
@@ -134,7 +134,7 @@ where
     }
 }
 
-// ── Conversion helpers ────────────────────────────────────────────────────────
+// Conversion helpers
 
 /// Converts an ECHO pulse width (µs) to a distance (cm).
 ///
@@ -157,7 +157,7 @@ pub fn distance_cm_to_pulse_us(distance_cm: u16) -> u32 {
     distance_cm as u32 * US_PER_CM
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// Tests
 
 #[cfg(test)]
 mod tests {

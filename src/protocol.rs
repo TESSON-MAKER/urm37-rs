@@ -4,7 +4,7 @@
 //! Format: [CMD, DATA0, DATA1, SUM]
 //! SUM = low byte of (CMD + DATA0 + DATA1)
 
-// ── Command bytes ─────────────────────────────────────────────────────────────
+// Command bytes
 
 /// Request a distance measurement.
 pub const CMD_DISTANCE: u8 = 0x02;
@@ -15,7 +15,7 @@ pub const CMD_EEPROM_READ: u8 = 0x03;
 /// Write an internal EEPROM register.
 pub const CMD_EEPROM_WRITE: u8 = 0x04;
 
-// ── EEPROM register addresses ─────────────────────────────────────────────────
+// EEPROM register addresses
 
 /// High byte of the COMP/Switch distance threshold.
 pub const EEPROM_THRESHOLD_HIGH: u8 = 0x00;
@@ -28,14 +28,14 @@ pub const EEPROM_AUTO_INTERVAL: u8 = 0x03;
 /// Internal gain (reserved, default 0x00).
 pub const EEPROM_GAIN: u8 = 0x04;
 
-// ── Invalid reading sentinels ─────────────────────────────────────────────────
+// Invalid reading sentinels
 
 /// Value returned by the sensor when a distance reading is invalid.
 pub const INVALID_DISTANCE: u16 = 0xFFFF;
 /// Value returned by the sensor when a temperature reading is invalid.
 pub const INVALID_TEMPERATURE_RAW: u16 = 0x8000;
 
-// ── Frame construction ────────────────────────────────────────────────────────
+// Frame construction
 
 /// Builds a 4-byte command frame.
 ///
@@ -76,7 +76,7 @@ pub fn frame_eeprom_write(address: u8, value: u8) -> [u8; 4] {
     build_frame(CMD_EEPROM_WRITE, address, value)
 }
 
-// ── Response decoding ─────────────────────────────────────────────────────────
+// Response decoding
 
 /// Validates the checksum of a received frame.
 ///
@@ -128,7 +128,7 @@ pub fn decode_temperature(frame: &[u8; 4]) -> Option<i16> {
     }
 }
 
-// ── Unit tests ────────────────────────────────────────────────────────────────
+// Unit tests
 
 #[cfg(test)]
 mod tests {

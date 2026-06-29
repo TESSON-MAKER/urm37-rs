@@ -17,12 +17,12 @@
 //! let cm = urm37::analog::adc_to_distance_cm(raw, 4095);
 //! ```
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// Constants
 
 /// Maximum sensor range in analog mode (cm).
 pub const ANALOG_MAX_RANGE_CM: u16 = 800;
 
-// ── Conversion ────────────────────────────────────────────────────────────────
+// Conversion
 
 /// Converts a raw ADC reading to a distance (cm).
 ///
@@ -64,7 +64,7 @@ pub fn voltage_mv_to_distance_cm(voltage_mv: u32, vcc_mv: u32) -> u16 {
     ((voltage_mv * ANALOG_MAX_RANGE_CM as u32) / vcc_mv) as u16
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// Tests
 
 #[cfg(test)]
 mod tests {

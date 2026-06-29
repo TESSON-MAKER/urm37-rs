@@ -113,7 +113,7 @@
 #![no_std]
 #![deny(missing_docs)]
 
-// ── Always-present modules (no feature gate required) ────────────────────────
+// Always-present modules (no feature gate required)
 
 /// Low-level UART frame encoding and decoding (protocol layer).
 pub mod protocol;
@@ -124,7 +124,7 @@ pub mod error;
 /// URM37 internal EEPROM register map and helpers.
 pub mod eeprom;
 
-// ── Feature-gated modules ─────────────────────────────────────────────────────
+// Feature-gated modules
 
 /// **Synchronous** UART driver (`feature = "uart"`).
 ///
@@ -150,7 +150,7 @@ pub mod pwm;
 #[cfg(feature = "analog")]
 pub mod analog;
 
-// ── Convenient re-exports ─────────────────────────────────────────────────────
+// Convenient re-exports
 
 pub use error::Error;
 pub use eeprom::EepromRegister;

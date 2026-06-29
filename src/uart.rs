@@ -34,7 +34,7 @@ where
         self.uart
     }
 
-    // ── Measurements ──────────────────────────────────────────────────────────
+    // Measurements
 
     /// Measures distance in centimetres.
     ///
@@ -54,7 +54,7 @@ where
         decode_temperature(&resp).ok_or(Error::InvalidReading)
     }
 
-    // ── EEPROM ────────────────────────────────────────────────────────────────
+    // EEPROM
 
     /// Reads an internal EEPROM register.
     pub fn eeprom_read(&mut self, reg: EepromRegister) -> Result<u8, Error<E>> {
@@ -74,7 +74,7 @@ where
         Ok(())
     }
 
-    // ── High-level configuration ──────────────────────────────────────────────
+    // High-level configuration
 
     /// Sets the COMP/Switch distance threshold (in cm).
     pub fn set_comp_threshold(&mut self, distance_cm: u16) -> Result<(), Error<E>> {
@@ -97,7 +97,7 @@ where
         self.eeprom_write(EepromRegister::MeasureMode, 0x00)
     }
 
-    // ── Internal ──────────────────────────────────────────────────────────────
+    // Internal
 
     /// Sends a command and reads the 4-byte response, validating the checksum.
     fn transact(&mut self, cmd: &[u8; 4]) -> Result<[u8; 4], Error<E>> {
