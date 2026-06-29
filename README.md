@@ -26,23 +26,29 @@ Supports all interface modes: synchronous/asynchronous UART, PWM trigger, and an
 
 ## Quick Examples
 
-All examples compile and run without hardware:
-
+### Educational Examples (no hardware required)
 ```bash
-# Protocol layer (no dependencies)
+# Protocol layer demo
 cargo run --example protocol
 
-# Analog mode conversions
+# Conversion tables & calculations
 cargo run --example analog_mode --features analog
-
-# PWM trigger mode conversions
 cargo run --example pwm_mode --features pwm
-
-# Synchronous UART (no hardware required)
 cargo run --example uart_sync --features uart
-
-# EEPROM configuration examples
 cargo run --example eeprom_config
+```
+
+### Real STM32 Examples (with Embassy)
+See **[examples/STM32_EXAMPLES.md](examples/STM32_EXAMPLES.md)** for:
+- `stm32_uart_async` — Simple async UART distance reading
+- `stm32_pwm_mode` — Precise PWM trigger with input capture
+- `stm32_analog_mode` — ADC-based distance measurement
+- `stm32_eeprom_config` — Sensor configuration examples
+- `stm32_complete` — Production-ready with error handling
+
+```bash
+# Build for STM32L4 (example)
+cargo build --example stm32_uart_async --target thumbv7em-none-eabihf --features uart-async
 ```
 
 ---
