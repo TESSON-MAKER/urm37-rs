@@ -1,18 +1,26 @@
 //! # urm37
 //!
-//! `no_std` embedded driver for the **DFRobot URM37 V4.0** ultrasonic distance sensor.
+//! **`no_std` embedded driver for the DFRobot URM37 V4.0 ultrasonic distance sensor.**
 //!
-//! Supports all interface modes with comprehensive EEPROM configuration, temperature reading,
-//! and zero dynamic memory allocation.
+//! ![DFRobot URM37 V4.0](https://raw.githubusercontent.com/TESSON-MAKER/urm37-rs/main/urm37v4-0.png)
 //!
-//! ## Supported modes
+//! This crate provides a platform-agnostic driver supporting all sensor interface modes:
+//! UART (sync & async), PWM trigger, and analog ADC.
 //!
-//! | Mode | Feature | HAL | Notes |
-//! |------|---------|-----|-------|
-//! | Synchronous UART | `uart` | `embedded-io` | Simple command-response protocol |
-//! | Asynchronous UART | `uart-async` | `embedded-io-async` | Embassy/RTIC compatible |
-//! | PWM trigger | `pwm` | GPIO + timer | Caller measures ECHO pulse width |
-//! | Analog | `analog` | ADC | Voltage proportional to distance |
+//! - **No allocations**: Stack-only, suitable for embedded systems with limited memory
+//! - **HAL-agnostic**: Works with any `embedded-io` / `embedded-hal` implementation
+//! - **Feature-gated**: Include only what you need
+//! - **Comprehensive**: EEPROM configuration, temperature reading, multiple output modes
+//! - **Tested**: 45 unit and integration tests covering all protocol operations
+//!
+//! ## Supported Modes
+//!
+//! | Mode | Feature | Traits | Use Case |
+//! |------|---------|--------|----------|
+//! | **Synchronous UART** | `uart` | `embedded-io::Read + Write` | Simple blocking I/O |
+//! | **Asynchronous UART** | `uart-async` | `embedded-io-async::Read + Write` | Embassy, RTIC, async/await |
+//! | **PWM Trigger** | `pwm` | GPIO output + your timer | Maximum flexibility |
+//! | **Analog ADC** | `analog` | None (math only) | Direct voltage measurement |
 //!
 //! ## Quick start (async UART with Embassy)
 //!
@@ -31,7 +39,7 @@
 //!
 //! ## PWM mode (Embassy, STM32)
 //!
-//! The driver manages the TRIG pin and exposes a [`pwm::Urm37Pwm::measure`] method
+//! The driver manages the TRIG pin and exposes a `measure()` method
 //! that accepts an async closure for the ECHO pulse measurement.
 //! Measuring the pulse width is the caller's responsibility and depends on the
 //! HAL and timer peripheral available.
@@ -115,27 +123,61 @@
 
 // Always-present modules (no feature gate required)
 
+/// Pre-built adapters for popular HALs.
+pub mod adapters;
+
 /// Low-level UART frame encoding and decoding (protocol layer).
+///
+/// This module contains the URM37 protocol implementation:
+/// - `Frame`: 4-byte command/response structure
+/// - `Command`: enum of all possible commands
+/// - `EepromRegister`: EEPROM register addresses
+/// - Frame building, checksum calculation, and parsing
+/// - EEPROM threshold encoding/decoding helpers
 pub mod protocol;
 
 /// Driver error types.
+///
+/// Errors that can occur during sensor communication and data reading.
 pub mod error;
 
-/// URM37 internal EEPROM register map and helpers.
-pub mod eeprom;
+// Re-export common EEPROM types and functions from protocol for convenience
+pub use protocol::{encode_threshold, decode_threshold, EepromRegister};
 
 // Feature-gated modules
 
-/// **Synchronous** UART driver (`feature = "uart"`).
+/// **Synchronous (Blocking)** UART driver (`feature = "blocking"`).
 ///
+/// Provides the `Urm37Uart<T>` driver for blocking UART communication.
 /// Requires `embedded_io::Read + Write`.
-#[cfg(feature = "uart")]
+/// Works with any blocking UART implementation.
+///
+/// # Example
+/// ```ignore
+/// use urm37::uart::Urm37Uart;
+///
+/// let mut sensor = Urm37Uart::new(uart_peripheral);
+/// let distance = sensor.read_distance()?;
+/// let temp = sensor.read_temperature()?;
+/// ```
+#[cfg(feature = "blocking")]
 pub mod uart;
 
-/// **Asynchronous** UART driver (`feature = "uart-async"`).
+/// **Asynchronous (Non-blocking)** UART driver (`feature = "async"`).
 ///
+/// Provides the `Urm37UartAsync<T>` driver for async/await UART communication.
 /// Requires `embedded_io_async::Read + Write`.
-#[cfg(feature = "uart-async")]
+/// Works with any async UART implementation.
+///
+/// # Example
+/// ```ignore
+/// use urm37::uart_async::Urm37UartAsync;
+///
+/// let mut sensor = Urm37UartAsync::new(uart_peripheral);
+/// let distance = sensor.read_distance().await?;
+/// let temp = sensor.read_temperature().await?;
+/// ```
+#[cfg(feature = "async")]
 pub mod uart_async;
 
 /// Utilities for **PWM trigger** mode (`feature = "pwm"`).
@@ -149,3 +191,63 @@ pub mod pwm;
 /// ADC reading is the caller's responsibility.
 #[cfg(feature = "analog")]
 pub mod analog;
+
+/// Generic async UART adapter template (feature: `async`)
+#[cfg(feature = "async")]
+pub mod adapters_embassy {
+    use embedded_io_async::{Read, Write, ErrorType};
+
+    /// Generic adapter for async UART types to `embedded_io_async` traits.
+    pub struct EmbassyAdapter<T>(pub T);
+
+    impl<T, E> EmbassyAdapter<T>
+    where
+        T: Read<Error = E> + Write<Error = E>,
+        E: embedded_io::Error,
+    {
+        /// Create a new adapter.
+        pub fn new(inner: T) -> Self {
+            Self(inner)
+        }
+
+        /// Release the inner UART.
+        pub fn release(self) -> T {
+            self.0
+        }
+    }
+
+    impl<T, E> ErrorType for EmbassyAdapter<T>
+    where
+        T: Read<Error = E> + Write<Error = E>,
+        E: embedded_io::Error,
+    {
+        type Error = E;
+    }
+
+    impl<T, E> Read for EmbassyAdapter<T>
+    where
+        T: Read<Error = E> + Write<Error = E>,
+        E: embedded_io::Error,
+    {
+        async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+            if buf.is_empty() { return Ok(0); }
+            self.0.read(&mut buf[..1]).await?;
+            Ok(1)
+        }
+    }
+
+    impl<T, E> Write for EmbassyAdapter<T>
+    where
+        T: Read<Error = E> + Write<Error = E>,
+        E: embedded_io::Error,
+    {
+        async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+            self.0.write_all(buf).await?;
+            Ok(buf.len())
+        }
+
+        async fn flush(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+}

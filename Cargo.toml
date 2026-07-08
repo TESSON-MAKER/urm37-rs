@@ -19,13 +19,17 @@ embedded-io-async  = { version = "0.6", optional = true }
 defmt              = { version = "0.3", optional = true }
 
 [features]
-default = []
+default = ["blocking"]
 
-# Synchronous UART mode (embedded-io)
-uart = ["dep:embedded-io"]
+# Blocking (synchronous) UART mode (embedded-io) - activated by default
+blocking = ["dep:embedded-io"]
 
-# Asynchronous UART mode (embedded-io-async)
-uart-async = ["dep:embedded-io", "dep:embedded-io-async"]
+# Async (non-blocking) UART mode (embedded-io-async)
+async = ["dep:embedded-io", "dep:embedded-io-async"]
+
+# Backward compatibility aliases
+uart = ["blocking"]
+uart-async = ["async"]
 
 # PWM trigger mode (GPIO + pulse width measurement)
 pwm = ["dep:embedded-hal", "dep:embedded-hal-async"]
@@ -44,3 +48,16 @@ embassy-futures = "0.1"
 defmt = "0.3"
 defmt-rtt = "0.4"
 cortex-m-rt = "0.7"
+
+[[test]]
+name = "protocol"
+path = "tests/protocol.rs"
+
+[[test]]
+name = "eeprom_conversion"
+path = "tests/eeprom_conversion.rs"
+
+[[test]]
+name = "uart_integration"
+path = "tests/uart_integration.rs"
+required-features = ["uart"]

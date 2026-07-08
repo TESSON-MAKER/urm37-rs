@@ -1,102 +1,83 @@
-//! URM37 driver in **synchronous UART** mode via `embedded-io`.
+//! **Synchronous (Blocking)** URM37 driver.
 //!
-//! Works with any peripheral implementing `embedded_io::Read + Write`.
+//! **Feature**: `blocking` (default)
 //!
-//! # Example
-//! ```ignore
-//! let mut sensor = Urm37Uart::new(serial);
-//! let dist_cm      = sensor.read_distance()?;
-//! let temp_tenths  = sensor.read_temperature()?;
-//! ```
+//! Simple blocking UART interface. Works with any `embedded_io::Read + Write`.
 
-use embedded_io::{Read, ReadExactError, Write};
+use embedded_io::ReadExactError;
+use embedded_io::{Read, Write};
 
-use crate::eeprom::EepromRegister;
 use crate::error::Error;
-use crate::protocol::Frame;
+use crate::protocol::{Frame, EepromRegister, encode_threshold};
 
 /// URM37 synchronous UART driver.
-pub struct Urm37Uart<UART> {
-    uart: UART,
-}
-
-impl<UART, E> Urm37Uart<UART>
+pub struct Urm37Uart<UART, E>
 where
     UART: Read<Error = E> + Write<Error = E>,
 {
-    /// Creates a new driver from a UART peripheral.
+    uart: UART,
+}
+
+impl<UART, E> Urm37Uart<UART, E>
+where
+    UART: Read<Error = E> + Write<Error = E>,
+{
+    /// Create a new driver.
     pub fn new(uart: UART) -> Self {
         Self { uart }
     }
 
-    /// Releases the underlying UART peripheral.
+    /// Release the underlying UART.
     pub fn release(self) -> UART {
         self.uart
     }
 
-    /// Measures distance in centimetres.
-    ///
-    /// Returns `Err(Error::InvalidReading)` when the sensor is out of range.
+    fn transact(&mut self, cmd: Frame) -> Result<Frame, Error<E>> {
+        // Write command
+        self.uart
+            .write_all(cmd.raw_data())
+            .map_err(Error::Bus)?;
+
+        // Read response
+        let mut buf = [0u8; 4];
+        match self.uart.read_exact(&mut buf) {
+            Ok(()) => {}
+            Err(ReadExactError::UnexpectedEof) => return Err(Error::Timeout),
+            Err(ReadExactError::Other(e)) => return Err(Error::Bus(e)),
+        }
+
+        Frame::parse(buf).map_err(|(expected, got)| Error::ChecksumMismatch { expected, got })
+    }
+
+    /// Read distance in centimetres.
     pub fn read_distance(&mut self) -> Result<u16, Error<E>> {
-        let cmd = Frame::distance_request();
-        let resp = self.transact(cmd)?;
+        let resp = self.transact(Frame::distance_request())?;
         resp.decode_distance().ok_or(Error::InvalidReading)
     }
 
-    /// Measures temperature in tenths of degrees Celsius (235 = 23.5 °C).
-    ///
-    /// Returns `Err(Error::InvalidReading)` when the reading is invalid.
+    /// Read temperature in degrees Celsius.
     pub fn read_temperature(&mut self) -> Result<f32, Error<E>> {
-        let cmd = Frame::temperature_request();
-        let resp = self.transact(cmd)?;
+        let resp = self.transact(Frame::temperature_request())?;
         resp.decode_temperature().ok_or(Error::InvalidReading)
     }
 
-    /// Reads an internal EEPROM register.
+    /// Read EEPROM register.
     pub fn eeprom_read(&mut self, reg: EepromRegister) -> Result<u8, Error<E>> {
-        let cmd = Frame::eeprom_read_request(reg);
-        let resp = self.transact(cmd)?;
+        let resp = self.transact(Frame::eeprom_read_request(reg))?;
         Ok(resp.raw_data()[1])
     }
 
-    /// Writes an internal EEPROM register.
-    ///
-    /// WARNING: EEPROM values persist across power cycles.
-    /// Avoid writing in a tight loop — EEPROM endurance is limited.
+    /// Write EEPROM register.
     pub fn eeprom_write(&mut self, reg: EepromRegister, value: u8) -> Result<(), Error<E>> {
-        let cmd = Frame::eeprom_write_request(reg, value);
-        let _resp = self.transact(cmd)?;
+        self.transact(Frame::eeprom_write_request(reg, value))?;
         Ok(())
     }
 
-    /// Sets the larger distance threshold (in cm).
-    pub fn set_larger_dist(&mut self, distance_cm: u16) -> Result<(), Error<E>> {
-        let (high, low) = crate::eeprom::encode_threshold(distance_cm);
+    /// Set comparator threshold.
+    pub fn set_comp_threshold(&mut self, distance_cm: u16) -> Result<(), Error<E>> {
+        let (high, low) = encode_threshold(distance_cm);
         self.eeprom_write(EepromRegister::LargerDist, high)?;
         self.eeprom_write(EepromRegister::LessDist, low)?;
         Ok(())
-    }
-
-    /// Reads the measurement mode.
-    pub fn read_measure_mode(&mut self) -> Result<u8, Error<E>> {
-        self.eeprom_read(EepromRegister::MeasureMode)
-    }
-
-    /// Writes the measurement mode.
-    pub fn write_measure_mode(&mut self, mode: u8) -> Result<(), Error<E>> {
-        self.eeprom_write(EepromRegister::MeasureMode, mode)
-    }
-
-    fn transact(&mut self, cmd: Frame) -> Result<Frame, Error<E>> {
-        let raw_cmd = cmd.raw_data();
-        self.uart.write_all(raw_cmd).map_err(Error::Bus)?;
-
-        let mut buf = [0u8; 4];
-        self.uart.read_exact(&mut buf).map_err(|e| match e {
-            ReadExactError::Other(e) => Error::Bus(e),
-            ReadExactError::UnexpectedEof => Error::Timeout,
-        })?;
-
-        Frame::parse(buf).map_err(|(expected, got)| Error::ChecksumMismatch { expected, got })
     }
 }

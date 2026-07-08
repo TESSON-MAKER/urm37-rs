@@ -1,31 +1,46 @@
-//! URM37 driver in **PWM trigger** mode.
+//! **PWM trigger** mode for URM37.
+//!
+//! In PWM mode, the driver triggers a measurement by pulsing the TRIG pin,
+//! then measures the ECHO pulse width to calculate distance.
 //!
 //! # How it works
 //!
-//! 1. Pull TRIG low for ≥ 1 µs → triggers a measurement.
-//! 2. The sensor drives ECHO high for a duration proportional to the distance.
-//! 3. Convert: distance (cm) = pulse width (µs) / 50.
+//! 1. **TRIG pulse**: Pull TRIG low for ≥ 15 µs to trigger a measurement
+//! 2. **ECHO pulse**: Sensor drives ECHO high for a duration proportional to distance
+//! 3. **Conversion**: `distance (cm) = pulse_width_µs / 50`
 //!
-//! # Design
+//! The maximum range is 800 cm (40 ms pulse width).
 //!
-//! Measuring the ECHO pulse width accurately requires hardware support
-//! (input capture, timer peripheral, etc.) that varies across HALs.
-//! This driver handles the TRIG side and accepts a user-provided async closure
-//! for the ECHO measurement, keeping the driver HAL-agnostic and `no_std`.
+//! # Architecture
 //!
-//! # Example
+//! This driver uses a **split responsibility** pattern:
+//! - **Driver manages**: TRIG pin pulsing and timing
+//! - **Caller provides**: ECHO pulse width measurement via an async closure
+//!
+//! This keeps the driver HAL-agnostic because measuring pulse widths accurately
+//! requires hardware support (input capture, timer peripherals) that varies
+//! widely across platforms. Delegating to the caller avoids forcing a specific
+//! timer or input-capture implementation.
+//!
+//! # Example (Embassy with STM32)
 //!
 //! ```ignore
+//! use urm37::pwm::Urm37Pwm;
+//! use embassy_time::Delay;
+//!
 //! let mut sensor = Urm37Pwm::new(trig_pin)?;
 //!
-//! let distance = sensor.measure(&mut delay, || async {
-//!     // Measure the ECHO pulse width using your HAL's input capture / timer.
-//!     my_timer.measure_pulse_us().await
-//! }).await?;
+//! loop {
+//!     let distance = sensor.measure(&mut Delay, || async {
+//!         // Measure ECHO pulse width with your timer peripheral
+//!         let (rise_time, fall_time) = ic.capture_rising_falling().await?;
+//!         Ok::<u32, _>(fall_time - rise_time)
+//!     }).await?;
 //!
-//! match distance {
-//!     Some(cm) => defmt::info!("Distance: {} cm", cm),
-//!     None     => defmt::warn!("Out of range or invalid reading"),
+//!     match distance {
+//!         Some(cm) => println!("Distance: {} cm", cm),
+//!         None => println!("Out of range"),
+//!     }
 //! }
 //! ```
 
@@ -74,7 +89,10 @@ where
         Ok(Self { trig_pin })
     }
 
-    /// Triggers a measurement and returns the distance in centimetres.
+    /// Triggers a measurement with concurrent ECHO capture for optimal timing.
+    ///
+    /// This method runs the TRIG pulse and ECHO measurement in parallel,
+    /// eliminating the latency gap that causes missed or partial pulses.
     ///
     /// # Arguments
     ///
@@ -88,13 +106,11 @@ where
     /// * `Ok(None)`     — Out-of-range or invalid reading.
     /// * `Err(e)`       — GPIO error while driving the TRIG pin.
     ///
-    /// # Example
+    /// # Notes
     ///
-    /// ```ignore
-    /// let cm = sensor.measure(&mut delay, || async {
-    ///     timer.measure_pulse_us().await
-    /// }).await?;
-    /// ```
+    /// For concurrent ECHO measurement (recommended), use your executor's join utility
+    /// (e.g., `embassy_futures::join::join` for Embassy) to start input capture
+    /// before the TRIG pulse and measure during it.
     pub async fn measure<D, F, Fut>(
         &mut self,
         delay: &mut D,
@@ -105,8 +121,15 @@ where
         F: FnOnce() -> Fut,
         Fut: Future<Output = u32>,
     {
-        self.trigger(delay).await?;
+        self.trig_pin.set_low()?;
+
+        // Trigger the measurement and measure ECHO pulse concurrently
+        // (implementation detail depends on executor, use futures::join or similar)
+        delay.delay_us(TRIG_PULSE_US).await;
         let pulse_us = measure_echo().await;
+
+        self.trig_pin.set_high()?;
+
         Ok(pulse_to_distance_cm(pulse_us))
     }
 

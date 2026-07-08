@@ -6,6 +6,10 @@
 
 `no_std` embedded driver for the **DFRobot URM37 V4.0** ultrasonic distance sensor.
 
+<div align="center">
+  <img src="urm37v4-0.png" alt="DFRobot URM37 V4.0 Ultrasonic Sensor" width="350">
+</div>
+
 An industrial-grade ultrasonic sensor offering advanced capabilities with improved accuracy, temperature correction, and versatile output modes. Supports all interface modes: synchronous/asynchronous UART, PWM trigger, and analog (DAC).
 
 ---
@@ -69,6 +73,22 @@ The documentation includes patterns for:
 - **Analog/ADC** - Voltage-to-distance conversion
 - **EEPROM config** - Sensor threshold and mode setup
 - **Production code** - Error handling, retries, statistics
+
+---
+
+## Platform Adapters
+
+The crate is **100% HAL-agnostic** — it works with any `embedded-io` trait implementation.
+You wrap your HAL's UART with a simple adapter that implements the standard traits.
+
+See **[ADAPTERS.md](ADAPTERS.md)** for ready-to-copy templates:
+
+- **Embassy STM32** (async) — Complete example with input capture PWM
+- **Arduino/AVR-HAL** (blocking) — Works with `arduino_hal` and `avr-hal`
+- **ESP32** (blocking) — Works with `esp-idf-hal`
+- **PWM mode** — Concurrent ECHO measurement with `embassy_futures::join`
+
+Each adapter is ~15 lines of code. Copy, adapt to your pins/peripherals, and you're done.
 
 ---
 

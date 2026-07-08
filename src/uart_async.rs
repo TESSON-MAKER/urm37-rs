@@ -1,103 +1,85 @@
-//! URM37 driver in **asynchronous UART** mode via `embedded-io-async`.
+//! **Asynchronous (Non-blocking)** URM37 driver.
 //!
-//! Compatible with Embassy, RTIC, and any embedded async executor.
+//! **Feature**: `async`
 //!
-//! # Example (Embassy)
-//! ```ignore
-//! let mut sensor = Urm37UartAsync::new(uart);
-//! let dist_cm = sensor.read_distance().await?;
-//! let temp    = sensor.read_temperature().await?;
-//! ```
+//! Non-blocking async interface. Works with any `embedded_io_async::Read + Write`.
 
 use embedded_io::ReadExactError;
 use embedded_io_async::{Read, Write};
 
-use crate::eeprom::EepromRegister;
 use crate::error::Error;
-use crate::protocol::Frame;
+use crate::protocol::{Frame, EepromRegister, encode_threshold};
 
 /// URM37 asynchronous UART driver.
-pub struct Urm37UartAsync<UART> {
-    uart: UART,
-}
-
-impl<UART, E> Urm37UartAsync<UART>
+pub struct Urm37UartAsync<UART, E>
 where
     UART: Read<Error = E> + Write<Error = E>,
 {
-    /// Creates a new driver from an async UART peripheral.
+    uart: UART,
+}
+
+impl<UART, E> Urm37UartAsync<UART, E>
+where
+    UART: Read<Error = E> + Write<Error = E>,
+{
+    /// Create a new async driver.
     pub fn new(uart: UART) -> Self {
         Self { uart }
     }
 
-    /// Releases the underlying UART peripheral.
+    /// Release the underlying UART.
     pub fn release(self) -> UART {
         self.uart
     }
 
-    /// Measures distance in centimetres (async).
-    ///
-    /// Returns `Err(Error::InvalidReading)` when the sensor is out of range.
+    async fn transact(&mut self, cmd: Frame) -> Result<Frame, Error<E>> {
+        // Write command
+        self.uart
+            .write_all(cmd.raw_data())
+            .await
+            .map_err(Error::Bus)?;
+
+        // Read response
+        let mut buf = [0u8; 4];
+        match self.uart.read_exact(&mut buf).await {
+            Ok(()) => {}
+            Err(ReadExactError::UnexpectedEof) => return Err(Error::Timeout),
+            Err(ReadExactError::Other(e)) => return Err(Error::Bus(e)),
+        }
+
+        Frame::parse(buf).map_err(|(expected, got)| Error::ChecksumMismatch { expected, got })
+    }
+
+    /// Read distance in centimetres (async).
     pub async fn read_distance(&mut self) -> Result<u16, Error<E>> {
-        let cmd = Frame::distance_request();
-        let resp = self.transact(cmd).await?;
+        let resp = self.transact(Frame::distance_request()).await?;
         resp.decode_distance().ok_or(Error::InvalidReading)
     }
 
-    /// Measures temperature in tenths of degrees Celsius (async).
-    ///
-    /// Returns `Err(Error::InvalidReading)` when the reading is invalid.
+    /// Read temperature in degrees Celsius (async).
     pub async fn read_temperature(&mut self) -> Result<f32, Error<E>> {
-        let cmd = Frame::temperature_request();
-        let resp = self.transact(cmd).await?;
+        let resp = self.transact(Frame::temperature_request()).await?;
         resp.decode_temperature().ok_or(Error::InvalidReading)
     }
 
-    /// Reads an internal EEPROM register (async).
+    /// Read EEPROM register (async).
     pub async fn eeprom_read(&mut self, reg: EepromRegister) -> Result<u8, Error<E>> {
-        let cmd = Frame::eeprom_read_request(reg);
-        let resp = self.transact(cmd).await?;
+        let resp = self.transact(Frame::eeprom_read_request(reg)).await?;
         Ok(resp.raw_data()[1])
     }
 
-    /// Writes an internal EEPROM register (async).
-    ///
-    /// WARNING: EEPROM values persist across power cycles.
-    /// Avoid writing in a tight loop — EEPROM endurance is limited.
+    /// Write EEPROM register (async).
     pub async fn eeprom_write(&mut self, reg: EepromRegister, value: u8) -> Result<(), Error<E>> {
-        let cmd = Frame::eeprom_write_request(reg, value);
-        let _resp = self.transact(cmd).await?;
+        self.transact(Frame::eeprom_write_request(reg, value))
+            .await?;
         Ok(())
     }
 
-    /// Sets the larger distance threshold in cm (async).
-    pub async fn set_larger_dist(&mut self, distance_cm: u16) -> Result<(), Error<E>> {
-        let (high, low) = crate::eeprom::encode_threshold(distance_cm);
+    /// Set comparator threshold (async).
+    pub async fn set_comp_threshold(&mut self, distance_cm: u16) -> Result<(), Error<E>> {
+        let (high, low) = encode_threshold(distance_cm);
         self.eeprom_write(EepromRegister::LargerDist, high).await?;
         self.eeprom_write(EepromRegister::LessDist, low).await?;
         Ok(())
-    }
-
-    /// Reads the measurement mode (async).
-    pub async fn read_measure_mode(&mut self) -> Result<u8, Error<E>> {
-        self.eeprom_read(EepromRegister::MeasureMode).await
-    }
-
-    /// Writes the measurement mode (async).
-    pub async fn write_measure_mode(&mut self, mode: u8) -> Result<(), Error<E>> {
-        self.eeprom_write(EepromRegister::MeasureMode, mode).await
-    }
-
-    async fn transact(&mut self, cmd: Frame) -> Result<Frame, Error<E>> {
-        let raw_cmd = cmd.raw_data();
-        self.uart.write_all(raw_cmd).await.map_err(Error::Bus)?;
-
-        let mut buf = [0u8; 4];
-        self.uart.read_exact(&mut buf).await.map_err(|e| match e {
-            ReadExactError::Other(e) => Error::Bus(e),
-            ReadExactError::UnexpectedEof => Error::Timeout,
-        })?;
-
-        Frame::parse(buf).map_err(|(expected, got)| Error::ChecksumMismatch { expected, got })
     }
 }

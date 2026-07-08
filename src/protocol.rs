@@ -1,8 +1,35 @@
 //! Encoding and decoding of URM37 UART frames using strongly-typed abstractions.
 //!
-//! Protocol: every command and response is exactly 4 bytes.
-//! Format: [CMD, DATA0, DATA1, SUM]
-//! SUM = low byte of (CMD + DATA0 + DATA1)
+//! # Protocol Overview
+//!
+//! Every URM37 command and response is exactly **4 bytes**:
+//! ```text
+//! [CMD, DATA0, DATA1, CHECKSUM]
+//! ```
+//!
+//! where `CHECKSUM = low byte of (CMD + DATA0 + DATA1)`.
+//!
+//! This module provides:
+//! - **Frame building**: construct commands with correct checksums
+//! - **Frame parsing**: validate checksums and deserialize responses
+//! - **Data decoding**: extract distance and temperature from responses
+//! - **EEPROM helpers**: encode/decode threshold values
+//!
+//! # Example
+//!
+//! ```ignore
+//! use urm37::protocol::{Frame, Command};
+//!
+//! // Build a distance request
+//! let frame = Frame::distance_request();
+//! assert_eq!(frame.raw_data(), &[0x22, 0x00, 0x00, 0x22]);
+//!
+//! // Parse a distance response (300 cm = 0x012C)
+//! let response = [0x22, 0x01, 0x2C, 0x4F];
+//! let frame = Frame::parse(response).expect("valid frame");
+//! let distance = frame.decode_distance().expect("valid reading");
+//! assert_eq!(distance, 300);
+//! ```
 
 /// Value returned by the sensor when a distance/temperature reading is invalid.
 pub const INVALID_DIST_TEMP: u16 = 0xFFFF;
@@ -21,19 +48,40 @@ pub enum Command {
     EepromWrite = 0x44,
 }
 
-/// EEPROM register addresses.
+/// EEPROM register addresses and their purposes.
+///
+/// The URM37 stores configuration in non-volatile EEPROM at these addresses.
+/// Values persist across power cycles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum EepromRegister {
-    /// Larger than set distance.
+    /// **Address 0x00**: Larger distance threshold (comparator mode).
+    /// COMP pin pulls low when measured distance **≥** this value.
+    /// Range: 0–255 cm (use with [`encode_threshold`] / [`decode_threshold`] for 16-bit values).
     LargerDist = 0x00,
-    /// Less than set distance.
+
+    /// **Address 0x01**: Smaller distance threshold (comparator mode).
+    /// COMP pin pulls low when measured distance **≤** this value.
+    /// Range: 0–255 cm.
     LessDist = 0x01,
-    /// Measurement mode: 0x00 = passive, 0x01 = auto.
+
+    /// **Address 0x02**: Measurement mode.
+    /// - `0xAA` = Autonomous (sensor continuously measures at set interval)
+    /// - `0xBB` = Passive (sensor measures only when requested via UART)
     MeasureMode = 0x02,
-    /// Serial level mode TTL/RS232: 0x00 = TTL, 0x01 = RS232.
+
+    /// **Address 0x03**: Serial interface level mode.
+    /// - `0x00` = TTL (3.3 V logic, standard for microcontrollers)
+    /// - `0x01` = RS232 (12 V levels, rarely used in embedded systems)
+    /// **Warning:** Changing this requires sensor power cycle to take effect.
     SerialLevelMode = 0x03,
-    /// Automatically measure time span: 0x64 = 100ms.
+
+    /// **Address 0x04**: Autonomous measurement interval.
+    /// Each unit = 25 ms.
+    /// - `0x01` = 25 ms
+    /// - `0x04` = 100 ms (common)
+    /// - `0x14` = 500 ms
+    /// - Max: `0xFF` = 6375 ms (~6.4 seconds)
     AutoMeasureTime = 0x04,
 }
 
@@ -55,6 +103,54 @@ pub enum SerialLevelMode {
     Ttl = 0x00,
     /// RS232 serial level mode (12V logic).
     Rs232 = 0x01,
+}
+
+// ===== EEPROM helpers =====
+
+/// Encodes a distance threshold (in cm) into two EEPROM bytes.
+///
+/// The URM37 stores distance thresholds as 16-bit big-endian values.
+/// This function splits a `u16` distance into high and low bytes suitable
+/// for writing to the sensor's EEPROM registers.
+///
+/// # Arguments
+/// * `distance_cm` - Distance in centimetres (0..=65535)
+///
+/// # Returns
+/// A tuple `(high_byte, low_byte)` to be written to consecutive EEPROM locations.
+///
+/// # Example
+/// ```
+/// # use urm37::protocol::encode_threshold;
+/// let (high, low) = encode_threshold(500);
+/// assert_eq!(high, 0x01);
+/// assert_eq!(low, 0xF4);
+/// ```
+#[inline]
+pub fn encode_threshold(distance_cm: u16) -> (u8, u8) {
+    ((distance_cm >> 8) as u8, (distance_cm & 0xFF) as u8)
+}
+
+/// Decodes a distance threshold from two EEPROM bytes.
+///
+/// Reconstructs a 16-bit big-endian distance value from two EEPROM bytes.
+///
+/// # Arguments
+/// * `high` - High byte (most significant)
+/// * `low`  - Low byte (least significant)
+///
+/// # Returns
+/// The decoded distance in centimetres (0..=65535).
+///
+/// # Example
+/// ```
+/// # use urm37::protocol::decode_threshold;
+/// let distance = decode_threshold(0x01, 0xF4);
+/// assert_eq!(distance, 500);
+/// ```
+#[inline]
+pub fn decode_threshold(high: u8, low: u8) -> u16 {
+    u16::from_be_bytes([high, low])
 }
 
 /// A validated 4-byte URM37 frame.
