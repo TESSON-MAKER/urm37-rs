@@ -182,6 +182,73 @@ The MOTO pin accepts angle codes (0x00–0x1E) that map to 0–176°:
 
 ---
 
+## Examples
+
+This crate includes three ready-to-run examples for **STM32F767ZI with Embassy**:
+
+### 1. Async UART Mode (`examples/uart_async_stm32.rs`)
+
+Demonstrates synchronous distance and temperature reading via UART, plus EEPROM configuration.
+
+**Hardware:**
+- STM32F767ZI (Nucleo F767ZI)
+- UART5: RX=PD2, TX=PC12
+
+**Run:**
+```bash
+cargo run --example uart_async_stm32 --features uart-async --release
+```
+
+**Features:**
+- Read distance in cm
+- Read temperature (0.1 °C resolution)
+- Configure COMP thresholds via EEPROM
+- Passive mode (MCU queries sensor on demand)
+
+---
+
+### 2. PWM Passive Mode (`examples/pwm_stm32.rs`)
+
+Demonstrates high-precision distance measurement using GPIO trigger + InputCapture ECHO pin.
+
+**Hardware:**
+- STM32F767ZI (Nucleo F767ZI)
+- GPIO PA0: TRIG output (active LOW)
+- TIM2 CH1 PA5: ECHO input (InputCapture)
+- Timer: 1 MHz (1 tick = 1 µs)
+
+**Run:**
+```bash
+cargo run --example pwm_stm32 --features pwm --release
+```
+
+**Features:**
+- Trigger pulse generation (10 ms default)
+- Echo pulse measurement with microsecond precision
+- Direct distance calculation from pulse width
+
+---
+
+### 3. Analog/ADC Mode (`examples/analog_stm32.rs`)
+
+Demonstrates simple voltage-to-distance conversion using ADC.
+
+**Hardware:**
+- STM32F767ZI (Nucleo F767ZI)
+- ADC1 PA4: Analog voltage from URM37 (6.8 mV/cm)
+
+**Run:**
+```bash
+cargo run --example analog_stm32 --features analog --release
+```
+
+**Features:**
+- 12-bit ADC reading
+- Direct ADC-to-distance conversion
+- No UART or timing logic required (simplest option)
+
+---
+
 ## Installation
 
 ```toml
@@ -263,6 +330,16 @@ sensor.set_auto_mode(40).await?;
 // Return to passive mode
 sensor.set_passive_mode().await?;
 ```
+
+---
+
+## Choosing the Right Mode
+
+| Mode | Pros | Cons | Best For |
+|------|------|------|----------|
+| **UART** | Full sensor control, temperature, EEPROM config | Requires serial setup, 9600 bps | Configurable systems, monitoring |
+| **PWM/ECHO** | High precision (1 cm), no additional pins | Manual triggering, timer required | Applications needing accuracy |
+| **Analog/ADC** | Simplest, no UART or special timing | Fixed 6.8 mV/cm mapping, lower precision | Cost-sensitive, simple trigger systems |
 
 ---
 
