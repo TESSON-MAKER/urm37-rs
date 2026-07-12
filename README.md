@@ -58,7 +58,7 @@ An industrial-grade ultrasonic sensor offering advanced capabilities with improv
 
 ## Integration with STM32 & Embassy
 
-See **[examples/STM32_EXAMPLES.md](examples/STM32_EXAMPLES.md)** for:
+See **[EXAMPLES.md](EXAMPLES.md)** for:
 
 - 5 real-world integration patterns (UART, PWM, ADC, configuration)
 - Hardware wiring diagrams for each mode
