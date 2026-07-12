@@ -76,22 +76,6 @@ The documentation includes patterns for:
 
 ---
 
-## Platform Adapters
-
-The crate is **100% HAL-agnostic** — it works with any `embedded-io` trait implementation.
-You wrap your HAL's UART with a simple adapter that implements the standard traits.
-
-See **[ADAPTERS.md](ADAPTERS.md)** for ready-to-copy templates:
-
-- **Embassy STM32** (async) — Complete example with input capture PWM
-- **Arduino/AVR-HAL** (blocking) — Works with `arduino_hal` and `avr-hal`
-- **ESP32** (blocking) — Works with `esp-idf-hal`
-- **PWM mode** — Concurrent ECHO measurement with `embassy_futures::join`
-
-Each adapter is ~15 lines of code. Copy, adapt to your pins/peripherals, and you're done.
-
----
-
 ## Pin Configuration
 
 | Pin | Label   | Description                                                              |
