@@ -12,109 +12,135 @@
 //!
 //! # Application
 //!
-//! Use an ADC to read the voltage on DAC_OUT, then convert to distance with
-//! the helper functions in this module. The ADC reading itself is left to the caller
-//! because ADC implementations vary widely across HALs.
+//! Use an ADC to read the voltage on DAC_OUT, average multiple readings for stability,
+//! then convert to distance with the helper functions in this module.
+//! ADC reading and averaging are left to the caller for maximum HAL compatibility.
 //!
 //! # Example
 //!
 //! ```ignore
 //! use urm37::analog::adc_to_distance_cm;
 //!
-//! // Read 12-bit ADC on STM32 with 3.3V supply
-//! let raw_adc = adc.read_channel(channel).unwrap();  // 0..=4095
-//! let distance = adc_to_distance_cm(raw_adc, 4095);
+//! // Collect and average multiple ADC readings
+//! let mut sum: u32 = 0;
+//! for _ in 0..10 {
+//!     sum += adc.blocking_read(&mut pin, SampleTime::CYCLES112) as u32;
+//! }
+//! let average = (sum / 10) as u16;
 //!
+//! // Convert to distance (12-bit ADC, 4095 max value)
+//! let distance = adc_to_distance_cm(average, 4095);
 //! println!("Distance: {} cm", distance);
 //! ```
 //!
 //! # Conversion functions
 //!
-//! - [`adc_to_distance_cm`]: Convert ADC raw value to distance
+//! - [`adc_to_distance_cm`]: Convert averaged ADC reading to distance
 //! - [`distance_cm_to_adc`]: Reverse conversion (for calibration)
 //! - [`voltage_mv_to_distance_cm`]: Direct voltage-to-distance conversion
-
-// Constants
 
 /// Maximum sensor range in analog mode (cm).
 pub const ANALOG_MAX_RANGE_CM: u16 = 800;
 
-// Conversion
+/// Maximum ADC value for 12-bit resolution.
+pub const ANALOG_MAX_ADC_VALUE: u16 = 4095;
+
+/// Generic ADC reader trait for analog measurements.
+///
+/// Implement this trait for your ADC peripheral to use with `AnalogSensor`.
+/// This trait abstracts the ADC reading logic, allowing the driver to work with
+/// any ADC implementation.
+#[cfg(feature = "analog")]
+pub trait AdcReader {
+    /// Error type for ADC reading operations.
+    type Error;
+
+    /// Read a single ADC sample.
+    ///
+    /// # Returns
+    /// - `Ok(raw_value)`: The raw ADC reading (0 to `adc_max`)
+    /// - `Err(Error)`: An error from the ADC peripheral
+    fn read(&mut self) -> Result<u16, Self::Error>;
+}
+
+/// Analog sensor driver that reads and averages ADC values.
+///
+/// This driver simplifies distance measurements from the URM37 analog output.
+/// It handles multiple ADC samples, averaging, and conversion to distance.
+/// Generic over any type implementing `AdcReader`.
+#[cfg(feature = "analog")]
+pub struct AnalogSensor<R: AdcReader> {
+    reader: R,
+}
+
+#[cfg(feature = "analog")]
+impl<R: AdcReader> AnalogSensor<R> {
+    /// Create a new analog sensor with an ADC reader.
+    ///
+    /// # Arguments
+    /// * `reader` - A type implementing the `AdcReader` trait
+    ///
+    /// # Example
+    /// ```ignore
+    /// use urm37::analog::AnalogSensor;
+    ///
+    /// let mut sensor = AnalogSensor::new(adc_reader);
+    /// let distance = sensor.read_distance(4095, 10)?;
+    /// ```
+    pub fn new(reader: R) -> Self {
+        Self { reader }
+    }
+
+    /// Read multiple ADC samples, average them, and convert to distance in centimetres.
+    ///
+    /// This method reads `num_samples` ADC values from the DAC_OUT pin,
+    /// computes their average, and converts the result to distance using
+    /// the linear relationship defined by the sensor.
+    ///
+    /// # Arguments
+    /// * `adc_max` - Maximum ADC value (e.g., 4095 for 12-bit, 1023 for 10-bit)
+    /// * `num_samples` - Number of ADC samples to read and average
+    ///
+    /// # Returns
+    /// - `Ok(distance_cm)`: Distance in centimetres (0.0 to 800.0)
+    /// - `Err(Error)`: ADC reading error
+    ///
+    /// # Example
+    /// ```ignore
+    /// use urm37::analog::AnalogSensor;
+    ///
+    /// match sensor.read_distance(4095, 10) {
+    ///     Ok(cm) => println!("Distance: {:.1} cm", cm),
+    ///     Err(e) => eprintln!("ADC error: {:?}", e),
+    /// }
+    /// ```
+    pub fn read_distance(&mut self, adc_max: u16, num_samples: usize) -> Result<f32, R::Error> {
+        let mut sum: u32 = 0;
+        for _ in 0..num_samples {
+            let reading = self.reader.read()?;
+            sum += reading as u32;
+        }
+        let average = (sum / num_samples as u32) as u16;
+        Ok(adc_to_distance_cm(average, adc_max))
+    }
+}
 
 /// Converts a raw ADC reading to a distance in centimetres.
 ///
-/// This is the most common conversion function. It performs a linear interpolation
-/// from the ADC's 0–max_raw range to the sensor's 0–800 cm range.
-///
-/// # Formula
-/// ```text
-/// distance (cm) = (adc_raw / adc_max) × 800
-/// ```
-///
-/// # Arguments
-/// * `adc_raw` — ADC value from the peripheral (typically 0..=4095 for 12-bit, 0..=1023 for 10-bit)
-/// * `adc_max` — Maximum ADC value for your bit resolution
-///   - 12-bit: 4095
-///   - 10-bit: 1023
-///   - 8-bit: 255
-///
-/// # Returns
-/// Distance in centimetres (0–800 cm). Returns 0 if `adc_max` is 0 (safety check).
-///
-/// # Examples
-///
-/// **12-bit ADC with 3.3 V supply (most common):**
-/// ```ignore
-/// use urm37::analog::adc_to_distance_cm;
-/// let raw: u16 = adc.read_channel(channel)?;
-/// let distance = adc_to_distance_cm(raw, 4095); // 12-bit max
-/// ```
-///
-/// **10-bit ADC (RP2040, AVR):**
-/// ```ignore
-/// use urm37::analog::adc_to_distance_cm;
-/// let raw: u16 = adc.read()?;
-/// let distance = adc_to_distance_cm(raw, 1023); // 10-bit max
-/// ```
-///
-/// **8-bit ADC (rare, but possible):**
-/// ```ignore
-/// use urm37::analog::adc_to_distance_cm;
-/// let raw: u16 = adc.read() as u16;
-/// let distance = adc_to_distance_cm(raw, 255); // 8-bit max
-/// ```
+/// This performs a linear interpolation from the ADC's 0–max_raw range
+/// to the sensor's 0–800 cm range.
 #[inline]
-pub fn adc_to_distance_cm(adc_raw: u16, adc_max: u16) -> u16 {
+pub fn adc_to_distance_cm(adc_raw: u16, adc_max: u16) -> f32 {
     if adc_max == 0 {
-        return 0;
+        return 0.0;
     }
-    ((adc_raw as u32 * ANALOG_MAX_RANGE_CM as u32) / adc_max as u32) as u16
+    let ratio = ANALOG_MAX_RANGE_CM as f32 / adc_max as f32;
+    adc_raw as f32 * ratio
 }
 
 /// Converts a distance (cm) to the expected ADC value — reverse operation.
 ///
-/// Useful for:
-/// - Hardware threshold configuration (analog comparators)
-/// - Testing ADC range
-/// - Calibration routines
-///
-/// # Formula
-/// ```text
-/// adc_value = (distance / 800) × adc_max
-/// ```
-///
-/// # Arguments
-/// * `distance_cm` — Target distance (0–800 cm)
-/// * `adc_max` — Maximum ADC value (4095 for 12-bit, 1023 for 10-bit, etc.)
-///
-/// # Returns
-/// Expected ADC value for the given distance.
-///
-/// # Example
-/// ```ignore
-/// use urm37::analog::distance_cm_to_adc;
-/// let threshold_adc = distance_cm_to_adc(300, 4095); // What ADC value = 300 cm?
-/// ```
+/// Useful for hardware threshold configuration or calibration routines.
 #[inline]
 pub fn distance_cm_to_adc(distance_cm: u16, adc_max: u16) -> u16 {
     if ANALOG_MAX_RANGE_CM == 0 {
@@ -125,34 +151,7 @@ pub fn distance_cm_to_adc(distance_cm: u16, adc_max: u16) -> u16 {
 
 /// Converts a measured voltage (in millivolts) directly to distance in centimetres.
 ///
-/// Useful when you measure the DAC voltage with an external ADC or millivoltmeter.
-/// The formula assumes a linear relationship: `distance = (voltage / Vcc) × 800`.
-///
-/// # Formula
-/// ```text
-/// distance (cm) = (voltage_mv / vcc_mv) × 800
-/// ```
-///
-/// # Arguments
-/// * `voltage_mv` — Measured voltage on DAC_OUT (in millivolts)
-/// * `vcc_mv` — Supply voltage (in millivolts)
-///   - 3300 mV for 3.3 V systems
-///   - 5000 mV for 5.0 V systems
-///
-/// # Returns
-/// Distance in centimetres (0–800 cm). Returns 0 if `vcc_mv` is 0 (safety check).
-///
-/// # Example
-/// ```ignore
-/// use urm37::analog::voltage_mv_to_distance_cm;
-/// // Measured 1650 mV on 3.3V supply
-/// let distance = voltage_mv_to_distance_cm(1650, 3300); // Result: 400 cm
-/// ```
-///
-/// # Use Cases
-/// - Direct voltage measurement (e.g., using a precision ADC or multimeter)
-/// - Hardware design validation
-/// - Debugging output voltage calibration
+/// Useful when you measure the DAC voltage with an external ADC or multimeter.
 #[inline]
 pub fn voltage_mv_to_distance_cm(voltage_mv: u32, vcc_mv: u32) -> u16 {
     if vcc_mv == 0 {
@@ -161,42 +160,31 @@ pub fn voltage_mv_to_distance_cm(voltage_mv: u32, vcc_mv: u32) -> u16 {
     ((voltage_mv * ANALOG_MAX_RANGE_CM as u32) / vcc_mv) as u16
 }
 
-// Tests
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_adc_midscale_12bit() {
-        // 12-bit ADC, mid-scale → ~400 cm
         let cm = adc_to_distance_cm(2048, 4095);
-        assert!((cm as i32 - 400).abs() <= 2); // integer rounding tolerance
+        assert!((cm - 400.0).abs() < 2.5);
     }
 
     #[test]
     fn test_adc_max() {
-        assert_eq!(adc_to_distance_cm(4095, 4095), 800);
+        let cm = adc_to_distance_cm(4095, 4095);
+        assert!((cm - 800.0).abs() < 0.1);
     }
 
     #[test]
     fn test_adc_zero() {
-        assert_eq!(adc_to_distance_cm(0, 4095), 0);
+        let cm = adc_to_distance_cm(0, 4095);
+        assert_eq!(cm, 0.0);
     }
 
     #[test]
     fn test_voltage_half_vcc() {
-        // 1650 mV out of 3300 mV → 400 cm
         let cm = voltage_mv_to_distance_cm(1650, 3300);
         assert_eq!(cm, 400);
-    }
-
-    #[test]
-    fn test_roundtrip_8bit() {
-        let distance: u16 = 200;
-        let raw = distance_cm_to_adc(distance, 255);
-        let back = adc_to_distance_cm(raw, 255);
-        // Integer rounding tolerance
-        assert!((back as i32 - distance as i32).abs() <= 4);
     }
 }

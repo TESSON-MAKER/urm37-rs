@@ -196,24 +196,51 @@ impl Frame {
     }
 
     /// Builds a distance request frame.
+    ///
+    /// Constructs a command to request the current distance measurement from the sensor.
+    ///
+    /// # Returns
+    /// A frame ready to be sent to the sensor via UART.
     #[inline]
     pub fn distance_request() -> Self {
         Self::build(Command::Distance, 0x00, 0x00)
     }
 
     /// Builds a temperature request frame.
+    ///
+    /// Constructs a command to request the current temperature reading from the sensor.
+    ///
+    /// # Returns
+    /// A frame ready to be sent to the sensor via UART.
     #[inline]
     pub fn temperature_request() -> Self {
         Self::build(Command::Temperature, 0x00, 0x00)
     }
 
     /// Builds an EEPROM read request frame.
+    ///
+    /// Constructs a command to read a value from one of the sensor's EEPROM registers.
+    ///
+    /// # Arguments
+    /// * `register` - The EEPROM register to read
+    ///
+    /// # Returns
+    /// A frame ready to be sent to the sensor via UART.
     #[inline]
     pub fn eeprom_read_request(register: EepromRegister) -> Self {
         Self::build(Command::EepromRead, register as u8, 0x00)
     }
 
     /// Builds an EEPROM write request frame.
+    ///
+    /// Constructs a command to write a value to one of the sensor's EEPROM registers.
+    ///
+    /// # Arguments
+    /// * `register` - The EEPROM register to write
+    /// * `value` - The value to write to the register
+    ///
+    /// # Returns
+    /// A frame ready to be sent to the sensor via UART.
     #[inline]
     pub fn eeprom_write_request(register: EepromRegister, value: u8) -> Self {
         Self::build(Command::EepromWrite, register as u8, value)

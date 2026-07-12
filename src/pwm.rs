@@ -1,219 +1,228 @@
-//! **PWM trigger** mode for URM37.
+//! **PWM echo measurement with two URM37 sensor modes** (`feature = "pwm"`).
 //!
-//! In PWM mode, the driver triggers a measurement by pulsing the TRIG pin,
-//! then measures the ECHO pulse width to calculate distance.
+//! Distance measurement via echo pulse width. Behavior depends on URM37 sensor mode
+//! (configured in EEPROM register `MeasureMode`):
 //!
-//! # How it works
+//! - **Autonomous mode (0xAA)** [`read_distance()`]: Sensor auto-measures and provides echo.
+//!   Driver reads echo pulse only. Simple one-call measurement.
 //!
-//! 1. **TRIG pulse**: Pull TRIG low for ≥ 15 µs to trigger a measurement
-//! 2. **ECHO pulse**: Sensor drives ECHO high for a duration proportional to distance
-//! 3. **Conversion**: `distance (cm) = pulse_width_µs / 50`
+//! - **Passive mode (0xBB)** [`read_distance_manual()`]: Sensor waits for TRIG pulse.
+//!   Driver sends TRIG, then reads echo. Requires explicit triggering.
 //!
-//! The maximum range is 800 cm (40 ms pulse width).
+//! # Design
 //!
-//! # Architecture
+//! The driver encapsulates TRIG pin control and accepts a generic pulse reader.
+//! The pulse reader (typically an input capture) measures the echo pulse width.
 //!
-//! This driver uses a **split responsibility** pattern:
-//! - **Driver manages**: TRIG pin pulsing and timing
-//! - **Caller provides**: ECHO pulse width measurement via an async closure
-//!
-//! This keeps the driver HAL-agnostic because measuring pulse widths accurately
-//! requires hardware support (input capture, timer peripherals) that varies
-//! widely across platforms. Delegating to the caller avoids forcing a specific
-//! timer or input-capture implementation.
-//!
-//! # Example (Embassy with STM32)
-//!
+//! To configure sensor mode, use UART drivers in [`crate::uart`] or [`crate::uart_async`]:
 //! ```ignore
-//! use urm37::pwm::Urm37Pwm;
-//! use embassy_time::Delay;
-//!
-//! let mut sensor = Urm37Pwm::new(trig_pin)?;
-//!
-//! loop {
-//!     let distance = sensor.measure(&mut Delay, || async {
-//!         // Measure ECHO pulse width with your timer peripheral
-//!         let (rise_time, fall_time) = ic.capture_rising_falling().await?;
-//!         Ok::<u32, _>(fall_time - rise_time)
-//!     }).await?;
-//!
-//!     match distance {
-//!         Some(cm) => println!("Distance: {} cm", cm),
-//!         None => println!("Out of range"),
-//!     }
-//! }
+//! eeprom_write(&mut uart, EepromRegister::MeasureMode, 0xAA).await?;  // autonomous
+//! eeprom_write(&mut uart, EepromRegister::MeasureMode, 0xBB).await?;  // passive
 //! ```
-
-use core::future::Future;
 
 use embedded_hal::digital::OutputPin;
 use embedded_hal_async::delay::DelayNs;
 
-// PWM protocol constants
+use crate::error::Error;
 
-/// Pulse width per centimetre in PWM mode (µs/cm).
-pub const US_PER_CM: u32 = 50;
-
-/// Minimum TRIG pulse width required to start a measurement (µs).
-pub const TRIG_PULSE_US: u32 = 15;
-
-/// Maximum valid ECHO pulse width (800 cm × 50 µs/cm = 40 000 µs).
-pub const MAX_VALID_PULSE_US: u32 = 800 * US_PER_CM;
-
-/// Sentinel pulse width indicating an out-of-range reading (per datasheet).
-pub const INVALID_PULSE_US: u32 = 50_000;
-
-// Driver
-
-/// URM37 driver in PWM trigger mode.
+/// Trait for automatic echo pulse measurement.
 ///
-/// Generic over the TRIG output pin type.
-/// The ECHO measurement is injected by the caller as an async closure.
-pub struct Urm37Pwm<TRIG> {
-    trig_pin: TRIG,
+/// Implementers measure the width of the LOW pulse on the ECHO pin
+/// and return the duration in microseconds.
+///
+/// **Pulse behavior:**
+/// - ECHO line is normally HIGH (idle state)
+/// - During measurement, ECHO goes LOW for a duration proportional to distance
+/// - Duration LOW = (distance_cm * 50) microseconds
+///
+/// **Recommended implementation** (synchronization for async/autonomous sensors):
+/// To reliably measure pulses in autonomous mode or async environments, synchronize
+/// on the idle state first, then capture the measurement pulse:
+/// 1. Wait for rising edge (ensures ECHO is HIGH and stable)
+/// 2. Wait for falling edge (start of LOW pulse)
+/// 3. Wait for rising edge (end of LOW pulse)
+/// 4. Calculate: duration_us = t_rise - t_fall
+///
+/// This prevents misalignment when calling asynchronously.
+pub trait PulseReader {
+    /// Measure one complete LOW pulse width on ECHO pin.
+    ///
+    /// Returns `Some(duration_us)` on successful capture, `None` if timeout or error.
+    /// A valid reading is typically in the range [0, 50000] microseconds.
+    fn measure_pulse(&mut self) -> impl core::future::Future<Output = Option<u32>> + '_;
 }
 
-impl<TRIG> Urm37Pwm<TRIG>
+/// **Automatic PWM trigger driver** with embedded TRIG control and echo measurement.
+///
+/// Encapsulates the TRIG GPIO pin, an echo pulse reader, and a delay provider.
+/// Handles the trigger pulse automatically; the caller simply invokes `read_distance()`.
+pub struct Urm37Pwm<TRIG, READER, DELAY>
 where
     TRIG: OutputPin,
+    READER: PulseReader,
+    DELAY: DelayNs,
 {
-    /// Creates a new [`Urm37Pwm`] instance.
+    trig: TRIG,
+    pulse_reader: READER,
+    delay: DELAY,
+    /// Trigger pulse duration in milliseconds (default: 10 ms).
+    trigger_duration_ms: u32,
+    /// Accept readings beyond this timeout as invalid.
+    /// If pulse reader returns None, treated as timeout.
+    max_timeout_us: u32,
+}
+
+impl<TRIG, READER, DELAY> Urm37Pwm<TRIG, READER, DELAY>
+where
+    TRIG: OutputPin,
+    READER: PulseReader,
+    DELAY: DelayNs,
+{
+    /// Create a new PWM driver.
     ///
-    /// Drives TRIG high immediately to satisfy the idle-high requirement.
+    /// # Parameters
+    /// - `trig`: GPIO pin connected to TRIG (output).
+    /// - `pulse_reader`: Pulse reader (e.g., input capture).
+    /// - `delay`: Delay provider for trigger pulse timing.
     ///
     /// # Errors
-    ///
-    /// Returns `TRIG::Error` if the initial `set_high` call fails.
-    pub fn new(mut trig_pin: TRIG) -> Result<Self, TRIG::Error> {
-        trig_pin.set_high()?;
-        Ok(Self { trig_pin })
+    /// Returns pin configuration errors if the TRIG pin cannot be set.
+    pub fn new(mut trig: TRIG, pulse_reader: READER, delay: DELAY) -> Result<Self, TRIG::Error> {
+        // TRIG starts HIGH; the sensor triggers on a falling edge
+        trig.set_high()?;
+
+        Ok(Self {
+            trig,
+            pulse_reader,
+            delay,
+            trigger_duration_ms: 10,
+            max_timeout_us: 50000,
+        })
     }
 
-    /// Triggers a measurement with concurrent ECHO capture for optimal timing.
+    /// Set the trigger pulse duration in milliseconds.
     ///
-    /// This method runs the TRIG pulse and ECHO measurement in parallel,
-    /// eliminating the latency gap that causes missed or partial pulses.
+    /// The default duration is 10 milliseconds, which is suitable for most applications.
+    /// Adjust this if needed for your specific sensor configuration.
     ///
     /// # Arguments
-    ///
-    /// * `delay`        — An async delay provider (`embedded_hal_async::delay::DelayNs`).
-    /// * `measure_echo` — An async closure that measures the ECHO pulse width in µs.
-    ///   Use your HAL's input capture or timer peripheral here.
+    /// * `ms` - Trigger pulse duration in milliseconds
+    pub fn set_trigger_duration(&mut self, ms: u32) {
+        self.trigger_duration_ms = ms;
+    }
+
+    /// Get the trigger pulse duration in milliseconds.
     ///
     /// # Returns
+    /// The current trigger pulse duration in milliseconds.
+    pub fn trigger_duration(&self) -> u32 {
+        self.trigger_duration_ms
+    }
+
+    /// Release the TRIG pin, pulse reader, and delay provider.
     ///
-    /// * `Ok(Some(cm))` — Valid distance in centimetres (1–800 cm).
-    /// * `Ok(None)`     — Out-of-range or invalid reading.
-    /// * `Err(e)`       — GPIO error while driving the TRIG pin.
+    /// Consumes the driver and returns ownership of its components.
     ///
-    /// # Notes
+    /// # Returns
+    /// A tuple containing:
+    /// - `TRIG`: The GPIO output pin
+    /// - `READER`: The pulse reader (e.g., input capture)
+    /// - `DELAY`: The delay provider
+    pub fn release(self) -> (TRIG, READER, DELAY) {
+        (self.trig, self.pulse_reader, self.delay)
+    }
+
+    /// **Autonomous mode**: Read distance (sensor auto-triggers internally).
     ///
-    /// For concurrent ECHO measurement (recommended), use your executor's join utility
-    /// (e.g., `embassy_futures::join::join` for Embassy) to start input capture
-    /// before the TRIG pulse and measure during it.
-    pub async fn measure<D, F, Fut>(
-        &mut self,
-        delay: &mut D,
-        measure_echo: F,
-    ) -> Result<Option<u16>, TRIG::Error>
-    where
-        D: DelayNs,
-        F: FnOnce() -> Fut,
-        Fut: Future<Output = u32>,
-    {
-        self.trig_pin.set_low()?;
-
-        // Trigger the measurement and measure ECHO pulse concurrently
-        // (implementation detail depends on executor, use futures::join or similar)
-        delay.delay_us(TRIG_PULSE_US).await;
-        let pulse_us = measure_echo().await;
-
-        self.trig_pin.set_high()?;
-
-        Ok(pulse_to_distance_cm(pulse_us))
-    }
-
-    /// Drives the TRIG pin low for [`TRIG_PULSE_US`] µs, then restores it high.
+    /// Use when URM37 is configured in autonomous mode (`MeasureMode = 0xAA`).
+    /// The sensor continuously measures and provides echo pulses automatically.
+    /// This method simply reads the latest echo pulse.
     ///
-    /// Prefer [`measure`](Self::measure) for a complete measurement.
-    /// Use this directly only if you need full control over the ECHO reading.
+    /// # Returns
+    /// - `Ok(Some(cm))`: Valid reading (distance in centimeters)
+    /// - `Ok(None)`: Echo out of range
+    /// - `Err(Error::Timeout)`: No echo detected or pulse reader timeout
+    /// - `Err(Error::Bus)`: GPIO pin control error
     ///
-    /// # Errors
+    /// # Timing
+    /// Echo read timeout: configured via struct field `max_timeout_us` (default: 50000 µs)
     ///
-    /// Returns `TRIG::Error` if any GPIO call fails.
-    pub async fn trigger<D>(&mut self, delay: &mut D) -> Result<(), TRIG::Error>
-    where
-        D: DelayNs,
-    {
-        self.trig_pin.set_low()?;
-        delay.delay_us(TRIG_PULSE_US).await;
-        self.trig_pin.set_high()?;
-        Ok(())
+    /// # Example
+    /// ```ignore
+    /// // Autonomous mode: sensor measures continuously
+    /// loop {
+    ///     match sensor.read_distance().await {
+    ///         Ok(Some(cm)) => println!("Distance: {} cm", cm),
+    ///         Ok(None) => println!("Out of range"),
+    ///         Err(e) => println!("Error: {:?}", e),
+    ///     }
+    ///     Timer::after_millis(100).await;
+    /// }
+    /// ```
+    pub async fn read_distance(&mut self) -> Result<Option<u16>, Error<TRIG::Error>> {
+        // Autonomous mode: sensor auto-triggers, just read the echo
+        self._measure_echo().await
     }
 
-    /// Releases the TRIG pin, returning ownership to the caller.
-    pub fn release(self) -> TRIG {
-        self.trig_pin
-    }
-}
+    /// **Passive mode**: Measure distance with manual TRIG pulse.
+    ///
+    /// Use when URM37 is configured in passive mode (`MeasureMode = 0xBB`).
+    /// The sensor waits for an explicit TRIG pulse before measuring.
+    /// This method sends the TRIG pulse and reads the resulting echo.
+    ///
+    /// # Returns
+    /// Same as [`read_distance()`]
+    ///
+    /// # Trigger pulse
+    /// - Pulse duration: configured via [`set_trigger_duration()`] (default: 10 ms)
+    /// - Sequence: HIGH → LOW (delay) → HIGH
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Passive mode: manual triggering
+    /// loop {
+    ///     match sensor.read_distance_manual().await {
+    ///         Ok(Some(cm)) => println!("Distance: {} cm", cm),
+    ///         Ok(None) => println!("Out of range"),
+    ///         Err(e) => println!("Error: {:?}", e),
+    ///     }
+    ///     Timer::after_millis(100).await;
+    /// }
+    /// ```
+    pub async fn read_distance_manual(&mut self) -> Result<Option<u16>, Error<TRIG::Error>> {
+        // Passive mode: send TRIG pulse, then read echo
+        self.trig.set_low().map_err(Error::Bus)?;
+        self.delay.delay_ms(self.trigger_duration_ms as u32).await;
+        self.trig.set_high().map_err(Error::Bus)?;
 
-// Conversion helpers
-
-/// Converts an ECHO pulse width (µs) to a distance (cm).
-///
-/// Returns `None` for the out-of-range sentinel (`50 000 µs`), zero, or any
-/// pulse exceeding the maximum valid range (800 cm).
-#[inline]
-pub fn pulse_to_distance_cm(pulse_us: u32) -> Option<u16> {
-    if pulse_us == 0 || pulse_us == INVALID_PULSE_US || pulse_us > MAX_VALID_PULSE_US {
-        None
-    } else {
-        Some((pulse_us / US_PER_CM) as u16)
-    }
-}
-
-/// Converts a distance (cm) to the expected ECHO pulse width (µs).
-///
-/// Useful for tests or for computing the COMP threshold register value.
-#[inline]
-pub fn distance_cm_to_pulse_us(distance_cm: u16) -> u32 {
-    distance_cm as u32 * US_PER_CM
-}
-
-// Tests
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn valid_pulse_converts_correctly() {
-        assert_eq!(pulse_to_distance_cm(5_000), Some(100));
+        self._measure_echo().await
     }
 
-    #[test]
-    fn invalid_sentinel_returns_none() {
-        assert_eq!(pulse_to_distance_cm(INVALID_PULSE_US), None);
-    }
-
-    #[test]
-    fn zero_pulse_returns_none() {
-        assert_eq!(pulse_to_distance_cm(0), None);
-    }
-
-    #[test]
-    fn max_valid_pulse_returns_800cm() {
-        assert_eq!(pulse_to_distance_cm(MAX_VALID_PULSE_US), Some(800));
-    }
-
-    #[test]
-    fn above_max_valid_pulse_returns_none() {
-        assert_eq!(pulse_to_distance_cm(MAX_VALID_PULSE_US + 1), None);
-    }
-
-    #[test]
-    fn roundtrip_distance_to_pulse_and_back() {
-        let cm: u16 = 350;
-        assert_eq!(pulse_to_distance_cm(distance_cm_to_pulse_us(cm)), Some(cm));
+    /// Private helper: measure echo pulse and convert to distance.
+    ///
+    /// **Conversion formula:** distance_cm = (pulse_duration_µs) / 50
+    /// - 50 µs of ECHO LOW = 1 cm distance
+    /// - Valid range: ~50 µs (1 cm) to ~5000 µs (~100 cm)
+    ///
+    /// Returns:
+    /// - `Ok(Some(cm))`: Valid measurement
+    /// - `Ok(None)`: Measurement received but out of valid range
+    /// - `Err(Timeout)`: No pulse detected or pulse reader timeout
+    async fn _measure_echo(&mut self) -> Result<Option<u16>, Error<TRIG::Error>> {
+        match self.pulse_reader.measure_pulse().await {
+            Some(duration_us) => {
+                // URM37: 50 µs of ECHO LOW = 1 cm
+                if duration_us > 0 && duration_us < self.max_timeout_us {
+                    Ok(Some((duration_us / 50) as u16))
+                } else {
+                    // Out of range but measurement succeeded
+                    Ok(None)
+                }
+            }
+            None => {
+                // Timeout: pulse reader returned None (no echo or timeout)
+                Err(Error::Timeout)
+            }
+        }
     }
 }

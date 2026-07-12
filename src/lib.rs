@@ -123,9 +123,6 @@
 
 // Always-present modules (no feature gate required)
 
-/// Pre-built adapters for popular HALs.
-pub mod adapters;
-
 /// Low-level UART frame encoding and decoding (protocol layer).
 ///
 /// This module contains the URM37 protocol implementation:
