@@ -1,7 +1,7 @@
 # urm37
-
-<img src="https://flagcdn.com/w20/eu.png" srcset="https://flagcdn.com/w320/eu.png 2x" height="20" alt="Europe" style="vertical-align: top; border-radius: 3px; margin-right: 4px;"><img src="https://flagcdn.com/w20/fr.png" srcset="https://flagcdn.com/w320/fr.png 2x" height="20" alt="France" style="vertical-align: top; border-radius: 3px; margin-right: 10px;">
 [![crates.io](https://img.shields.io/crates/v/urm37.svg)](https://crates.io/crates/urm37) [![docs.rs](https://docs.rs/urm37/badge.svg)](https://docs.rs/urm37) [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
+
+<img src="https://flagcdn.com/w320/eu.png" srcset="https://flagcdn.com/w320/eu.png 2x" height="20" alt="Europe" style="vertical-align: top; border-radius: 3px; margin-right: 4px;"><img src="https://flagcdn.com/w320/fr.png" srcset="https://flagcdn.com/w320/fr.png 2x" height="20" alt="France" style="vertical-align: top; border-radius: 3px; margin-right: 10px;">
 
 `no_std` embedded driver for the **DFRobot URM37 V4.0** ultrasonic distance sensor.
 
