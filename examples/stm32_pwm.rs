@@ -1,23 +1,23 @@
-//! URM37 PWM Trigger (Async) example for STM32F767ZI with Embassy
+//! # URM37 PWM Async Example for STM32F767ZI
 //!
-//! This example demonstrates:
-//! - Async PWM mode with InputCapture for echo measurement
-//! - Supports both autonomous and passive measurement modes
-//! - High precision timing (µs resolution)
+//! Demonstrates async PWM mode with InputCapture for precise echo measurement.
 //!
-//! Hardware:
-//! - STM32F767ZI (Nucleo F767ZI)
-//! - GPIO PA0: TRIG output (for passive mode)
-//! - TIM2 CH1 PA5: ECHO input (InputCapture)
-//! - Timer: TIM2 at 1 MHz (1 tick = 1 µs)
+//! ## Hardware Setup
+//! - **PA0**: TRIG output (GPIO)
+//! - **PA5**: ECHO input (TIM2 CH1 InputCapture)
+//! - **TIM2**: 1 MHz (1 µs per tick)
+//! - **STM32F767ZI (Nucleo)**
 //!
-//! Sensor Configuration:
-//! 1. Autonomous mode (0xAA): Sensor auto-measures → call `read_distance()`
-//! 2. Passive mode (0xBB): Manual triggering → call `read_distance_manual()`
-//!
-//! Run:
+//! ## Output Format
+//! ```text
+//! [DISTANCE] X cm
+//! [OUT_OF_RANGE]
+//! [ERROR]
 //! ```
-//! cargo run --example pwm_stm32 --features pwm --release
+//!
+//! ## Build & Run
+//! ```bash
+//! cargo run --example stm32_pwm --features pwm --release
 //! ```
 
 #![no_std]
@@ -119,26 +119,19 @@ async fn main(_spawner: Spawner) {
     // Configure trigger pulse duration (default: 10 ms)
     sensor.set_trigger_duration(10);
 
-    info!("=== URM37 PWM Async Example ===");
-    info!("TRIG: PA0 (GPIO output), ECHO: PA5 (TIM2 CH1 input capture)");
-    info!("Timer: 1 MHz (1 tick = 1 µs)");
-    info!("Sensor mode: Passive (manual TRIG)");
-    info!("");
-
     loop {
-        // Passive mode: driver sends TRIG pulse + reads echo
         match sensor.read_distance_manual().await {
             Ok(Some(cm)) => {
-                info!("✓ Distance: {} cm", cm);
+                info!("[DISTANCE] {} cm", cm);
             }
             Ok(None) => {
-                warn!("Out of range or invalid reading");
+                info!("[OUT_OF_RANGE]");
             }
-            Err(e) => {
-                error!("Error: {:?}", e);
+            Err(_) => {
+                info!("[ERROR]");
             }
         }
 
-        Timer::after_millis(100).await;
+        Timer::after_millis(500).await;
     }
 }

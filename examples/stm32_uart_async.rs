@@ -1,20 +1,22 @@
-//! URM37 Async UART example for STM32F767ZI with Embassy
+//! # URM37 Async UART Example for STM32F767ZI
 //!
-//! This example demonstrates:
-//! - Reading distance via UART (passive mode)
-//! - Reading temperature
-//! - Configuring EEPROM thresholds
+//! Demonstrates async UART communication with distance and temperature reading.
 //!
-//! Hardware:
-//! - STM32F767ZI (Nucleo F767ZI)
-//! - UART5: RX=PD2, TX=PC12 (can be adjusted for your board)
-//! - URM37 connected to UART5
+//! ## Hardware Setup
+//! - **UART5**: RX=PD2, TX=PC12
+//! - **STM32F767ZI (Nucleo)**
+//! - DMA: CH0 (TX), CH7 (RX)
 //!
-//! To run on different hardware, adjust the UART pins and peripheral.
-//!
-//! Run:
+//! ## Output Format
+//! ```text
+//! [DISTANCE] X cm
+//! [TEMPERATURE] X.X °C
+//! [ERROR]
 //! ```
-//! cargo run --example uart_async_stm32 --features async --release
+//!
+//! ## Build & Run
+//! ```bash
+//! cargo run --example stm32_uart_async --features async --release
 //! ```
 
 #![no_std]
@@ -131,42 +133,29 @@ async fn main(_spawner: Spawner) {
     let wrapper = UartWrapper { uart };
     let mut sensor = Urm37UartAsync::new(wrapper);
 
-    info!("=== URM37 UART Async Example ===");
-
     loop {
-        // Read distance
         match sensor.read_distance().await {
             Ok(distance) => {
-                info!("Distance: {} cm", distance);
+                info!("[DISTANCE] {} cm", distance);
             }
-            Err(e) => {
-                warn!("Distance read error: {:?}", e);
+            Err(_) => {
+                info!("[ERROR]");
             }
         }
 
         Timer::after_millis(500).await;
 
-        // Read temperature
         match sensor.read_temperature().await {
             Ok(temp) => {
                 let temp_int = temp as i32;
                 let temp_frac = ((temp * 10.0) as i32) % 10;
-                info!("Temperature: {}.{} °C", temp_int, temp_frac);
+                info!("[TEMPERATURE] {}.{} °C", temp_int, temp_frac);
             }
-            Err(e) => {
-                warn!("Temperature read error: {:?}", e);
+            Err(_) => {
+                info!("[ERROR]");
             }
         }
 
         Timer::after_millis(500).await;
-
-        // Optional: Configure thresholds (once at startup)
-        // Uncomment to test:
-        /*
-        match sensor.set_comp_threshold(50).await {
-            Ok(()) => info!("Threshold set to 50 cm"),
-            Err(e) => warn!("Threshold error: {:?}", e),
-        }
-        */
     }
 }

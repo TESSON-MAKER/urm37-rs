@@ -17,10 +17,36 @@
 //!
 //! | Mode | Feature | Traits | Use Case |
 //! |------|---------|--------|----------|
-//! | **Synchronous UART** | `uart` | `embedded-io::Read + Write` | Simple blocking I/O |
-//! | **Asynchronous UART** | `uart-async` | `embedded-io-async::Read + Write` | Embassy, RTIC, async/await |
+//! | **Synchronous UART** | `blocking` | `embedded-io::Read + Write` | Simple blocking I/O |
+//! | **Asynchronous UART** | `async` | `embedded-io-async::Read + Write` | Embassy, RTIC, async/await |
 //! | **PWM Trigger** | `pwm` | GPIO output + your timer | Maximum flexibility |
 //! | **Analog ADC** | `analog` | None (math only) | Direct voltage measurement |
+//!
+//! ## Standardized Output Format
+//!
+//! All examples follow this output format for easy parsing:
+//! ```text
+//! [DISTANCE] X cm              # Successful distance measurement
+//! [TEMPERATURE] X.X °C         # Temperature reading
+//! [OUT_OF_RANGE]               # Sensor reading out of valid range
+//! [ERROR]                       # Communication or sensor error
+//! ```
+//!
+//! ## Examples
+//!
+//! Ready-to-use examples for popular platforms:
+//!
+//! ### Arduino Mega 2560
+//! - **[mega2560_uart](examples/mega2560_uart.rs)**: UART communication (dual USART)
+//! - **[mega2560_pwm](examples/mega2560_pwm.rs)**: PWM pulse measurement
+//! - **[mega2560_analog](examples/mega2560_analog.rs)**: Analog ADC reading
+//!
+//! ### STM32F767ZI (Nucleo)
+//! - **[stm32_uart_async](examples/stm32_uart_async.rs)**: Async UART with Embassy
+//! - **[stm32_pwm](examples/stm32_pwm.rs)**: Async PWM with InputCapture
+//! - **[stm32_analog](examples/stm32_analog.rs)**: Async ADC with Embassy
+//!
+//! All examples output distance/temperature in the standardized format above.
 //!
 //! ## Quick start (async UART with Embassy)
 //!

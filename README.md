@@ -169,67 +169,114 @@ The MOTO pin accepts angle codes (0x00–0x1E) that map to 0–176°:
 
 ---
 
+## Standardized Output Format
+
+All examples follow this consistent output format for easy parsing and monitoring:
+
+```
+[DISTANCE] X cm              # Successful distance measurement
+[TEMPERATURE] X.X °C         # Temperature reading
+[OUT_OF_RANGE]               # Sensor reading out of valid range
+[ERROR]                       # Communication or sensor error
+```
+
+This format enables:
+- Easy serial port monitoring
+- Simple regex-based parsing
+- Scripted data collection
+- Cross-platform compatibility
+
+---
+
 ## Examples
 
-This crate includes three ready-to-run examples for **STM32F767ZI with Embassy**:
+Ready-to-use examples for popular microcontrollers and frameworks:
 
-### 1. Async UART Mode (`examples/uart_async_stm32.rs`)
+### Arduino Mega 2560
 
-Demonstrates asynchronous distance and temperature reading via UART, plus EEPROM configuration.
+#### 1. UART Mode (`examples/mega2560_uart.rs`)
+
+Dual UART: one for computer, one for sensor.
 
 **Hardware:**
-- STM32F767ZI (Nucleo F767ZI)
-- UART5: RX=PD2, TX=PC12
+- Arduino Mega 2560
+- USART0 (D0/D1): Computer communication (57600 baud)
+- USART1 (D18/D19): URM37 sensor (9600 baud)
 
 **Run:**
 ```bash
-cargo run --example uart_async_stm32 --features uart-async --release
+cargo build --example mega2560_uart --features blocking
 ```
 
-**Features:**
-- Read distance in cm
-- Read temperature (0.1 °C resolution)
-- Configure COMP thresholds via EEPROM
-- Passive mode (MCU queries sensor on demand)
+#### 2. PWM Mode (`examples/mega2560_pwm.rs`)
+
+High-precision distance measurement using PWM pulse.
+
+**Hardware:**
+- Arduino Mega 2560
+- D9: TRIG output
+- D2: ECHO input (pulse measurement)
+
+**Run:**
+```bash
+cargo build --example mega2560_pwm --features pwm
+```
+
+#### 3. Analog Mode (`examples/mega2560_analog.rs`)
+
+Simple analog voltage-to-distance conversion.
+
+**Hardware:**
+- Arduino Mega 2560
+- A0: Analog voltage input (6.8 mV/cm)
+
+**Run:**
+```bash
+cargo build --example mega2560_analog --features analog
+```
 
 ---
 
-### 2. PWM Async Mode (`examples/pwm_stm32.rs`)
+### STM32F767ZI (Nucleo) with Embassy
 
-Demonstrates high-precision asynchronous distance measurement with InputCapture for ECHO pulse.
+#### 1. Async UART Mode (`examples/stm32_uart_async.rs`)
+
+Asynchronous UART communication with distance and temperature.
 
 **Hardware:**
 - STM32F767ZI (Nucleo F767ZI)
-- GPIO PA0: TRIG output (active LOW)
-- TIM2 CH1 PA5: ECHO input (InputCapture)
-- Timer: 1 MHz (1 tick = 1 µs)
+- UART5: RX=PD2, TX=PC12 (DMA: CH0 TX, CH7 RX)
 
 **Run:**
 ```bash
-cargo run --example pwm_stm32 --features pwm --release
+cargo run --example stm32_uart_async --features async --release
 ```
 
-**Features:**
-- Automatic TRIG pulse generation (10 ms default)
-- Async/await based echo measurement
-- Microsecond precision timing
-- **Sensor modes:**
-  - **Autonomous (0xAA):** `read_distance()` - sensor auto-triggers, driver just reads echo
-  - **Passive (0xBB):** `read_distance_manual()` - driver sends TRIG pulse, then reads echo
+#### 2. Async PWM Mode (`examples/stm32_pwm.rs`)
 
----
-
-### 3. Analog/ADC Mode (`examples/analog_stm32.rs`)
-
-Demonstrates simple voltage-to-distance conversion using ADC.
+High-precision async PWM with InputCapture.
 
 **Hardware:**
 - STM32F767ZI (Nucleo F767ZI)
-- ADC1 PA4: Analog voltage from URM37 (6.8 mV/cm)
+- PA0: TRIG output (GPIO)
+- PA5: ECHO input (TIM2 CH1 InputCapture)
 
 **Run:**
 ```bash
-cargo run --example analog_stm32 --features analog --release
+cargo run --example stm32_pwm --features pwm --release
+```
+
+#### 3. Async ADC Mode (`examples/stm32_analog.rs`)
+
+Simple async ADC reading for distance.
+
+**Hardware:**
+- STM32F767ZI (Nucleo F767ZI)
+- PA4: Analog voltage input
+
+**Run:**
+```bash
+cargo run --example stm32_analog --features analog --release
 ```
 
 **Features:**
@@ -406,8 +453,8 @@ sensor.set_passive_mode().await?;
 
 | Feature       | Default | Description                                           |
 |---------------|---------|-------------------------------------------------------|
-| `uart`        | no      | Synchronous (blocking) UART driver                    |
-| `uart-async`  | no      | Async/await UART driver (Embassy, RTIC)              |
+| `blocking`    | no      | Synchronous (blocking) UART driver                    |
+| `async`       | no      | Async/await UART driver (Embassy, RTIC)              |
 | `pwm`         | no      | PWM mode (both async `Urm37PwmAsync` and sync `Urm37Pwm`) |
 | `analog`      | no      | Analog/ADC mode utilities                             |
 | `defmt`       | no      | `defmt` logging support                               |
