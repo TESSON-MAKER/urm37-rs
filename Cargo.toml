@@ -1,6 +1,6 @@
 [package]
 name = "urm37"
-version = "0.12.0"
+version = "1.0.0"
 edition = "2024"
 authors = ["Paul TESSON <paul.tesson.officiel@gmail.com>"]
 description = "Platform-agnostic no_std driver for the DFRobot URM37 V4.0 ultrasonic distance sensor (UART, PWM, Analog)"
