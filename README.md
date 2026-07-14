@@ -1,7 +1,5 @@
 # urm37
 <p align="left">
-  <img src="https://flagcdn.com/w320/eu.png" srcset="https://flagcdn.com/w320/eu.png 2x" height="20" alt="Europe" style="border-radius: 3px;">
-  <img src="https://flagcdn.com/w320/fr.png" srcset="https://flagcdn.com/w320/fr.png 2x" height="20" alt="France" style="border-radius: 3px; margin-right: 6px;">
   <a href="https://crates.io/crates/urm37"><img src="https://img.shields.io/crates/v/urm37.svg" alt="crates.io" height="20"></a>
   <a href="https://docs.rs/urm37"><img src="https://docs.rs/urm37/badge.svg" alt="docs.rs" height="20"></a>
   <a href="LICENSE-MIT"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg" alt="License" height="20"></a>
@@ -291,9 +289,9 @@ cargo run --example stm32_analog --features analog --release
 ```toml
 [dependencies]
 # Choose the features you need:
-urm37 = { version = "1.0", features = ["uart-async"] }
+urm37 = { version = "1.1", features = ["uart-async"] }
 # or
-urm37 = { version = "1.0", features = ["uart", "pwm", "analog"] }
+urm37 = { version = "1.1", features = ["uart", "pwm", "analog"] }
 ```
 
 ---
