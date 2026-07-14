@@ -25,7 +25,7 @@
 
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{Level, Output, Speed};
+use embassy_stm32::gpio::{Level, Output, Pull, Speed};
 use embassy_stm32::timer::input_capture::{CapturePin, InputCapture};
 use embassy_stm32::timer::low_level::CountingMode;
 use embassy_stm32::timer::{CaptureCompareInterruptHandler, Channel};
@@ -102,7 +102,7 @@ async fn main(_spawner: Spawner) {
     // Setup InputCapture for ECHO (TIM2 CH1 on PA5)
     let ic = InputCapture::new(
         p.TIM2,
-        Some(CapturePin::new(p.PA5)),
+        Some(CapturePin::new(p.PA5, Pull::None)),
         None,
         None,
         None,
