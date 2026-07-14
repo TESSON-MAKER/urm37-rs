@@ -16,48 +16,50 @@
 //!
 //! To configure sensor mode, use UART drivers in [`crate::uart`] or [`crate::uart_async`]:
 //! ```ignore
-//! eeprom_write(&mut uart, EepromRegister::MeasureMode, 0xAA)?;  // autonomous
-//! eeprom_write(&mut uart, EepromRegister::MeasureMode, 0xBB)?;  // passive
+//! eeprom_write(&mut uart, EepromRegister::MeasureMode, 0xAA).await?;  // autonomous
+//! eeprom_write(&mut uart, EepromRegister::MeasureMode, 0xBB).await?;  // passive
 //! ```
 
 use embedded_hal::digital::OutputPin;
-use embedded_hal::delay::DelayNs;
+use embedded_hal_async::delay::DelayNs;
 
 use crate::error::Error;
 
-/// Trait for automatic echo pulse measurement (synchronous/blocking).
+/// Trait for automatic echo pulse measurement (async).
 ///
 /// Implementers measure the width of the LOW pulse on the ECHO pin
-/// and return the duration in microseconds. This is a blocking operation.
+/// and return the duration in microseconds.
 ///
 /// **Pulse behavior:**
 /// - ECHO line is normally HIGH (idle state)
 /// - During measurement, ECHO goes LOW for a duration proportional to distance
 /// - Duration LOW = (distance_cm * 50) microseconds
 ///
-/// **Recommended implementation** (synchronization for sensors):
-/// To reliably measure pulses, synchronize on the idle state first,
-/// then capture the measurement pulse:
+/// **Recommended implementation** (synchronization for async/autonomous sensors):
+/// To reliably measure pulses in autonomous mode or async environments, synchronize
+/// on the idle state first, then capture the measurement pulse:
 /// 1. Wait for rising edge (ensures ECHO is HIGH and stable)
 /// 2. Wait for falling edge (start of LOW pulse)
 /// 3. Wait for rising edge (end of LOW pulse)
 /// 4. Calculate: duration_us = t_rise - t_fall
-pub trait PulseReader {
+///
+/// This prevents misalignment when calling asynchronously.
+pub trait PulseReaderAsync {
     /// Measure one complete LOW pulse width on ECHO pin.
     ///
     /// Returns `Some(duration_us)` on successful capture, `None` if timeout or error.
     /// A valid reading is typically in the range [0, 50000] microseconds.
-    fn measure_pulse(&mut self) -> Option<u32>;
+    fn measure_pulse(&mut self) -> impl core::future::Future<Output = Option<u32>> + '_;
 }
 
-/// **Automatic PWM trigger driver** with embedded TRIG control and echo measurement (sync).
+/// **Automatic PWM trigger driver** with embedded TRIG control and echo measurement (async).
 ///
 /// Encapsulates the TRIG GPIO pin, an echo pulse reader, and a delay provider.
 /// Handles the trigger pulse automatically; the caller simply invokes `read_distance()`.
-pub struct Urm37Pwm<TRIG, READER, DELAY>
+pub struct Urm37PwmAsync<TRIG, READER, DELAY>
 where
     TRIG: OutputPin,
-    READER: PulseReader,
+    READER: PulseReaderAsync,
     DELAY: DelayNs,
 {
     trig: TRIG,
@@ -70,13 +72,13 @@ where
     max_timeout_us: u32,
 }
 
-impl<TRIG, READER, DELAY> Urm37Pwm<TRIG, READER, DELAY>
+impl<TRIG, READER, DELAY> Urm37PwmAsync<TRIG, READER, DELAY>
 where
     TRIG: OutputPin,
-    READER: PulseReader,
+    READER: PulseReaderAsync,
     DELAY: DelayNs,
 {
-    /// Create a new PWM driver (sync).
+    /// Create a new PWM driver (async).
     ///
     /// # Parameters
     /// - `trig`: GPIO pin connected to TRIG (output).
@@ -94,7 +96,7 @@ where
             pulse_reader,
             delay,
             trigger_duration_ms: 10,
-            max_timeout_us: 60000,
+            max_timeout_us: 50000,
         })
     }
 
@@ -143,23 +145,23 @@ where
     /// - `Err(Error::Bus)`: GPIO pin control error
     ///
     /// # Timing
-    /// Echo read timeout: configured via struct field `max_timeout_us` (default: 60000 µs)
+    /// Echo read timeout: configured via struct field `max_timeout_us` (default: 50000 µs)
     ///
     /// # Example
     /// ```ignore
     /// // Autonomous mode: sensor measures continuously
     /// loop {
-    ///     match sensor.read_distance() {
+    ///     match sensor.read_distance().await {
     ///         Ok(Some(cm)) => println!("Distance: {} cm", cm),
     ///         Ok(None) => println!("Out of range"),
     ///         Err(e) => println!("Error: {:?}", e),
     ///     }
-    ///     delay.delay_ms(100);
+    ///     Timer::after_millis(100).await;
     /// }
     /// ```
-    pub fn read_distance(&mut self) -> Result<Option<u16>, Error<TRIG::Error>> {
+    pub async fn read_distance(&mut self) -> Result<Option<u16>, Error<TRIG::Error>> {
         // Autonomous mode: sensor auto-triggers, just read the echo
-        self._measure_echo()
+        self._measure_echo().await
     }
 
     /// **Passive mode**: Measure distance with manual TRIG pulse.
@@ -179,21 +181,21 @@ where
     /// ```ignore
     /// // Passive mode: manual triggering
     /// loop {
-    ///     match sensor.read_distance_manual() {
+    ///     match sensor.read_distance_manual().await {
     ///         Ok(Some(cm)) => println!("Distance: {} cm", cm),
     ///         Ok(None) => println!("Out of range"),
     ///         Err(e) => println!("Error: {:?}", e),
     ///     }
-    ///     delay.delay_ms(100);
+    ///     Timer::after_millis(100).await;
     /// }
     /// ```
-    pub fn read_distance_manual(&mut self) -> Result<Option<u16>, Error<TRIG::Error>> {
+    pub async fn read_distance_manual(&mut self) -> Result<Option<u16>, Error<TRIG::Error>> {
         // Passive mode: send TRIG pulse, then read echo
         self.trig.set_low().map_err(Error::Bus)?;
-        self.delay.delay_ms(self.trigger_duration_ms);
+        self.delay.delay_ms(self.trigger_duration_ms).await;
         self.trig.set_high().map_err(Error::Bus)?;
 
-        self._measure_echo()
+        self._measure_echo().await
     }
 
     /// Private helper: measure echo pulse and convert to distance.
@@ -206,8 +208,8 @@ where
     /// - `Ok(Some(cm))`: Valid measurement
     /// - `Ok(None)`: Measurement received but out of valid range
     /// - `Err(Timeout)`: No pulse detected or pulse reader timeout
-    fn _measure_echo(&mut self) -> Result<Option<u16>, Error<TRIG::Error>> {
-        match self.pulse_reader.measure_pulse() {
+    async fn _measure_echo(&mut self) -> Result<Option<u16>, Error<TRIG::Error>> {
+        match self.pulse_reader.measure_pulse().await {
             Some(duration_us) => {
                 // URM37: 50 µs of ECHO LOW = 1 cm
                 if duration_us > 0 && duration_us < self.max_timeout_us {

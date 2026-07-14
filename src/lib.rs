@@ -37,58 +37,66 @@
 //! let temp = sensor.read_temperature().await?; // tenths of °C
 //! ```
 //!
-//! ## PWM mode (Embassy, STM32)
+//! ## PWM mode
 //!
-//! The driver manages the TRIG pin and exposes a `measure()` method
-//! that accepts an async closure for the ECHO pulse measurement.
-//! Measuring the pulse width is the caller's responsibility and depends on the
-//! HAL and timer peripheral available.
+//! Distance measurement via ECHO pulse width. The driver manages the TRIG pin
+//! and supports both synchronous and asynchronous implementations.
 //!
-//! The recommended approach on STM32 with Embassy uses two input-capture
-//! channels on the same timer with opposite polarities, joined concurrently:
+//! ### Async Mode (Embassy-based, recommended)
+//!
+//! Use `Urm37PwmAsync` for non-blocking async/await code with Embassy:
 //!
 //! ```ignore
-//! use embassy_futures::join::join;
-//! use embassy_stm32::timer::input_capture::{CapturePin, InputCapture, InputCapturePolarity};
-//! use embassy_stm32::timer::low_level::CountingMode;
+//! use embassy_stm32::timer::input_capture::{CapturePin, InputCapture};
 //! use embassy_stm32::timer::Channel;
-//! use embassy_stm32::time::hz;
-//! use embassy_time::{Delay, Timer};
-//! use urm37::pwm::Urm37Pwm;
+//! use embassy_time::Timer;
+//! use urm37::pwm_async::{Urm37PwmAsync, PulseReaderAsync};
 //!
-//! // TRIG → PA0 (output), ECHO → PA5 (TIM2_CH1 AF1) + PA1 (TIM2_CH2 AF1)
-//! let trig = Output::new(p.PA0, Level::High, Speed::Low);
-//! let mut sensor = Urm37Pwm::new(trig).unwrap();
+//! // Async pulse reader using InputCapture
+//! struct AsyncPulseReader<'d> { ic: InputCapture<'d, peripherals::TIM2> }
 //!
-//! let mut ic = InputCapture::new(
-//!     p.TIM2,
-//!     Some(CapturePin::new_ch1(p.PA5)), // rising edge
-//!     Some(CapturePin::new_ch2(p.PA1)), // falling edge
-//!     None,
-//!     None,
-//!     hz(1_000_000), // 1 tick = 1 µs
-//!     CountingMode::EdgeAlignedUp,
-//! );
-//!
-//! ic.set_input_capture_polarity(Channel::Ch1, InputCapturePolarity::Rising);
-//! ic.set_input_capture_polarity(Channel::Ch2, InputCapturePolarity::Falling);
-//!
-//! loop {
-//!     let distance = sensor.measure(&mut Delay, || async {
-//!         // Capture both edges concurrently and compute the pulse width.
-//!         let (t_rise, t_fall) = join(
-//!             ic.capture(Channel::Ch1),
-//!             ic.capture(Channel::Ch2),
-//!         ).await;
-//!         t_fall.wrapping_sub(t_rise)
-//!     }).await.unwrap();
-//!
-//!     match distance {
-//!         Some(cm) => defmt::info!("Distance: {} cm", cm),
-//!         None     => defmt::warn!("Out of range or invalid reading"),
+//! impl<'d> PulseReaderAsync for AsyncPulseReader<'d> {
+//!     async fn measure_pulse(&mut self) -> Option<u32> {
+//!         self.ic.wait_for_rising_edge(Channel::Ch1).await;
+//!         let t_fall = self.ic.wait_for_falling_edge(Channel::Ch1).await;
+//!         let t_rise = self.ic.wait_for_rising_edge(Channel::Ch1).await;
+//!         let duration_us = t_rise.wrapping_sub(t_fall);
+//!         (duration_us > 0 && duration_us < 50000).then_some(duration_us)
 //!     }
+//! }
 //!
-//!     Timer::after_millis(100).await;
+//! let trig = Output::new(p.PA0, Level::High, Speed::Low);
+//! let mut sensor = Urm37PwmAsync::new(trig, AsyncPulseReader { ic }, Delay)?;
+//! match sensor.read_distance_manual().await {
+//!     Ok(Some(cm)) => defmt::info!("Distance: {} cm", cm),
+//!     _ => {}
+//! }
+//! ```
+//!
+//! ### Sync Mode (Blocking)
+//!
+//! Use `Urm37Pwm` for simple blocking code without async:
+//!
+//! ```ignore
+//! use urm37::pwm::{Urm37Pwm, PulseReader};
+//!
+//! struct SyncPulseReader { echo: Pin, timer: Timer }
+//!
+//! impl PulseReader for SyncPulseReader {
+//!     fn measure_pulse(&mut self) -> Option<u32> {
+//!         while self.echo.is_low() { }
+//!         while self.echo.is_high() { }
+//!         let t_fall = self.timer.counter();
+//!         while self.echo.is_low() { }
+//!         let duration_us = self.timer.counter().wrapping_sub(t_fall);
+//!         (duration_us > 0 && duration_us < 50000).then_some(duration_us)
+//!     }
+//! }
+//!
+//! let mut sensor = Urm37Pwm::new(trig, SyncPulseReader { ... }, delay)?;
+//! match sensor.read_distance_manual() {
+//!     Ok(Some(cm)) => println!("Distance: {} cm", cm),
+//!     _ => {}
 //! }
 //! ```
 //!
@@ -177,11 +185,51 @@ pub mod uart;
 #[cfg(feature = "async")]
 pub mod uart_async;
 
-/// Utilities for **PWM trigger** mode (`feature = "pwm"`).
+/// **Synchronous (Blocking)** PWM trigger driver (`feature = "pwm"`).
 ///
-/// Pulse width measurement is the caller's responsibility.
+/// Provides the `Urm37Pwm` driver for blocking PWM pulse measurement.
+///
+/// Use this when you want a simple blocking API without async/await overhead.
+/// The pulse reader implementation should use busy-waiting or a blocking timer.
+///
+/// Supports both sensor modes:
+/// - **Autonomous (0xAA):** `read_distance()` - sensor auto-triggers
+/// - **Passive (0xBB):** `read_distance_manual()` - MCU sends TRIG pulse
+///
+/// # Example
+/// ```ignore
+/// let mut sensor = Urm37Pwm::new(trig_pin, pulse_reader, delay)?;
+/// match sensor.read_distance_manual() {
+///     Ok(Some(cm)) => println!("Distance: {} cm", cm),
+///     Ok(None) => println!("Out of range"),
+///     Err(e) => println!("Error: {:?}", e),
+/// }
+/// ```
 #[cfg(feature = "pwm")]
 pub mod pwm;
+
+/// **Asynchronous (Non-blocking)** PWM trigger driver (`feature = "pwm"`).
+///
+/// Provides the `Urm37PwmAsync` driver for async/await PWM pulse measurement.
+/// Recommended for Embassy and other async runtimes.
+///
+/// The pulse reader implementation should return async futures for non-blocking operation.
+///
+/// Supports both sensor modes:
+/// - **Autonomous (0xAA):** `read_distance().await` - sensor auto-triggers
+/// - **Passive (0xBB):** `read_distance_manual().await` - MCU sends TRIG pulse
+///
+/// # Example
+/// ```ignore
+/// let mut sensor = Urm37PwmAsync::new(trig_pin, pulse_reader, delay)?;
+/// match sensor.read_distance_manual().await {
+///     Ok(Some(cm)) => println!("Distance: {} cm", cm),
+///     Ok(None) => println!("Out of range"),
+///     Err(e) => println!("Error: {:?}", e),
+/// }
+/// ```
+#[cfg(feature = "pwm")]
+pub mod pwm_async;
 
 /// Utilities for **analog ADC** mode (`feature = "analog"`).
 ///

@@ -175,7 +175,7 @@ This crate includes three ready-to-run examples for **STM32F767ZI with Embassy**
 
 ### 1. Async UART Mode (`examples/uart_async_stm32.rs`)
 
-Demonstrates synchronous distance and temperature reading via UART, plus EEPROM configuration.
+Demonstrates asynchronous distance and temperature reading via UART, plus EEPROM configuration.
 
 **Hardware:**
 - STM32F767ZI (Nucleo F767ZI)
@@ -194,9 +194,9 @@ cargo run --example uart_async_stm32 --features uart-async --release
 
 ---
 
-### 2. PWM Passive Mode (`examples/pwm_stm32.rs`)
+### 2. PWM Async Mode (`examples/pwm_stm32.rs`)
 
-Demonstrates high-precision distance measurement using GPIO trigger + InputCapture ECHO pin.
+Demonstrates high-precision asynchronous distance measurement with InputCapture for ECHO pulse.
 
 **Hardware:**
 - STM32F767ZI (Nucleo F767ZI)
@@ -210,9 +210,12 @@ cargo run --example pwm_stm32 --features pwm --release
 ```
 
 **Features:**
-- Trigger pulse generation (10 ms default)
-- Echo pulse measurement with microsecond precision
-- Direct distance calculation from pulse width
+- Automatic TRIG pulse generation (10 ms default)
+- Async/await based echo measurement
+- Microsecond precision timing
+- **Sensor modes:**
+  - **Autonomous (0xAA):** `read_distance()` - sensor auto-triggers, driver just reads echo
+  - **Passive (0xBB):** `read_distance_manual()` - driver sends TRIG pulse, then reads echo
 
 ---
 
@@ -276,18 +279,73 @@ let dist_cm = sensor.read_distance()?;
 
 ### PWM mode
 
+The PWM driver automatically manages the TRIG pin and provides two modes based on sensor configuration:
+
+#### Asynchronous PWM (Embassy-based, recommended for async code)
+
 ```rust
-use urm37::pwm::pulse_to_distance_cm;
+use urm37::pwm_async::{Urm37PwmAsync, PulseReaderAsync};
+use embedded_hal_async::delay::DelayNs;
 
-// Trigger the measurement:
-// 1. Pull COMP/TRIG low (> 1 µs)
-// 2. Release high
-// 3. Measure the ECHO pulse width with a timer
+// Implement PulseReaderAsync for your timer/input-capture hardware
+struct MyPulseReader { /* your IC setup */ }
 
-let pulse_us: u32 = measure_echo_us(); // your implementation
-match pulse_to_distance_cm(pulse_us) {
-    Some(cm) => println!("Distance: {} cm", cm),
-    None     => println!("Out of range"),
+impl PulseReaderAsync for MyPulseReader {
+    async fn measure_pulse(&mut self) -> Option<u32> {
+        // Return pulse width in µs (0-50000)
+        // Measure ECHO LOW pulse with microsecond precision
+    }
+}
+
+let mut sensor = Urm37PwmAsync::new(trig_pin, pulse_reader, delay)?;
+sensor.set_trigger_duration(10); // 10 ms pulse
+
+// Autonomous mode (sensor auto-measures)
+match sensor.read_distance().await {
+    Ok(Some(cm)) => println!("Distance: {} cm", cm),
+    Ok(None) => println!("Out of range"),
+    Err(e) => println!("Error: {:?}", e),
+}
+
+// Passive mode (manual TRIG)
+match sensor.read_distance_manual().await {
+    Ok(Some(cm)) => println!("Distance: {} cm", cm),
+    Ok(None) => println!("Out of range"),
+    Err(e) => println!("Error: {:?}", e),
+}
+```
+
+#### Synchronous PWM (blocking, no async/await)
+
+```rust
+use urm37::pwm::{Urm37Pwm, PulseReader};
+use embedded_hal::delay::DelayNs;
+
+// Implement PulseReader (blocking version)
+struct MyPulseReader { /* GPIO + timer */ }
+
+impl PulseReader for MyPulseReader {
+    fn measure_pulse(&mut self) -> Option<u32> {
+        // Return pulse width in µs (0-50000)
+        // Busy-wait for ECHO LOW pulse (blocking)
+    }
+}
+
+let mut sensor = Urm37Pwm::new(trig_pin, pulse_reader, delay)?;
+sensor.set_trigger_duration(10);
+
+// Autonomous mode
+match sensor.read_distance() {
+    Ok(Some(cm)) => println!("Distance: {} cm", cm),
+    Ok(None) => println!("Out of range"),
+    Err(e) => println!("Error: {:?}", e),
+}
+
+// Passive mode
+match sensor.read_distance_manual() {
+    Ok(Some(cm)) => println!("Distance: {} cm", cm),
+    Ok(None) => println!("Out of range"),
+    Err(e) => println!("Error: {:?}", e),
 }
 ```
 
@@ -324,21 +382,35 @@ sensor.set_passive_mode().await?;
 
 | Mode | Pros | Cons | Best For |
 |------|------|------|----------|
-| **UART** | Full sensor control, temperature, EEPROM config | Requires serial setup, 9600 bps | Configurable systems, monitoring |
-| **PWM/ECHO** | High precision (1 cm), no additional pins | Manual triggering, timer required | Applications needing accuracy |
-| **Analog/ADC** | Simplest, no UART or special timing | Fixed 6.8 mV/cm mapping, lower precision | Cost-sensitive, simple trigger systems |
+| **UART (async/sync)** | Full sensor control, temperature, EEPROM config | Requires serial setup, 9600 bps | Configurable systems, monitoring, telemetry |
+| **PWM Async** | Non-blocking, integrates with Embassy, high precision | Requires async runtime, input capture or timer | Modern embedded async code, real-time systems |
+| **PWM Sync** | Simple blocking API, no async overhead | Busy-waits on pulse, blocks task | Simple applications, straightforward pulse measurement |
+| **Analog/ADC** | Simplest, no UART or special timing | Fixed 6.8 mV/cm mapping, lower precision | Cost-sensitive, simple systems, no timing requirements |
+
+### PWM Mode Details
+
+**Autonomous Mode (0xAA):**
+- Sensor auto-measures distance at configurable intervals
+- Call `read_distance()` or `read_distance()` to get latest measurement
+- Simpler API, sensor handles triggering
+
+**Passive Mode (0xBB):**
+- Sensor waits for explicit TRIG pulse from MCU
+- Call `read_distance_manual()` to trigger measurement and read result
+- Gives you precise control over measurement timing
+- Recommended for synchronization with other operations
 
 ---
 
 ## Cargo features
 
-| Feature       | Default | Description                              |
-|---------------|---------|------------------------------------------|
-| `uart`        | no      | Synchronous UART driver (`embedded-io`)  |
-| `uart-async`  | no      | Async UART driver (`embedded-io-async`)  |
-| `pwm`         | no      | PWM mode utilities (`embedded-hal`)      |
-| `analog`      | no      | Analog/ADC mode utilities (`embedded-hal`) |
-| `defmt`       | no      | `defmt` logging on error types           |
+| Feature       | Default | Description                                           |
+|---------------|---------|-------------------------------------------------------|
+| `uart`        | no      | Synchronous (blocking) UART driver                    |
+| `uart-async`  | no      | Async/await UART driver (Embassy, RTIC)              |
+| `pwm`         | no      | PWM mode (both async `Urm37PwmAsync` and sync `Urm37Pwm`) |
+| `analog`      | no      | Analog/ADC mode utilities                             |
+| `defmt`       | no      | `defmt` logging support                               |
 
 ---
 
