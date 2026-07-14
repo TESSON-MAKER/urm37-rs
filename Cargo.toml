@@ -41,15 +41,7 @@ analog = ["dep:embedded-hal"]
 defmt = ["dep:defmt"]
 
 [dev-dependencies]
-embassy-executor = { version = "0.5", features = ["arch-cortex-m"] }
-embassy-stm32 = { version = "0.6", features = ["stm32f767zi", "memory-x", "single-bank", "unstable-pac"] }
-embassy-time = "0.3"
-embassy-futures = "0.1"
-defmt = "0.3"
-defmt-rtt = "0.4"
-cortex-m-rt = "0.7"
-panic-probe = { version = "0.3", features = ["print-defmt"] }
-embedded-hal-async = { version = "1.0" }
+embedded-io = { version = "0.7" }
 
 [[test]]
 name = "protocol"
