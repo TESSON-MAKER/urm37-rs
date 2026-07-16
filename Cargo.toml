@@ -1,6 +1,6 @@
 [package]
 name = "urm37"
-version = "1.1.2"
+version = "1.2.0"
 edition = "2024"
 authors = ["Paul TESSON <paul.tesson.officiel@gmail.com>"]
 description = "Platform-agnostic no_std driver for the DFRobot URM37 V4.0 ultrasonic distance sensor (UART, PWM, Analog)"
@@ -12,22 +12,34 @@ categories = ["embedded", "no-std", "hardware-support"]
 readme = "README.md"
 
 [dependencies]
+# Standard hardware HALs
 embedded-hal       = { version = "1.0", optional = true }
 embedded-hal-async = { version = "1.0", optional = true }
-embedded-io        = { version = "0.6", optional = true }
-embedded-io-async  = { version = "0.6", optional = true }
 defmt              = { version = "1.0", optional = true }
 
+# --- MULTI-VERSION SUPPORT FOR EMBEDDED-IO ---
+# Internal aliases to handle both versions of I/O in parallel
+embedded-io-06-crate = { package = "embedded-io", version = "0.6", optional = true }
+embedded-io-async-06-crate = { package = "embedded-io-async", version = "0.6", optional = true }
+
+embedded-io-07-crate = { package = "embedded-io", version = "0.7", optional = true }
+embedded-io-async-07-crate = { package = "embedded-io-async", version = "0.7", optional = true }
+
 [features]
-default = ["blocking"]
+# By default, we enable blocking mode and target the embedded-io 0.6 ecosystem
+default = ["blocking", "embedded-io-06"]
 
-# Blocking (synchronous) UART mode (embedded-io) - activated by default
-blocking = ["dep:embedded-io"]
+# I/O Version selection (the user chooses only one)
+embedded-io-06 = ["dep:embedded-io-06-crate", "dep:embedded-io-async-06-crate"]
+embedded-io-07 = ["dep:embedded-io-07-crate", "dep:embedded-io-async-07-crate"]
 
-# Async (non-blocking) UART mode (embedded-io-async)
-async = ["dep:embedded-io", "dep:embedded-io-async"]
+# Blocking (synchronous) UART mode (enabled by default)
+blocking = []
 
-# Backward compatibility aliases
+# Async (non-blocking) UART mode
+async = []
+
+# Backward compatibility aliases (your test code will keep working)
 uart = ["blocking"]
 uart-async = ["async"]
 
@@ -41,6 +53,7 @@ analog = ["dep:embedded-hal"]
 defmt = ["dep:defmt"]
 
 [dev-dependencies]
+# Local tests will use version 0.6 by default
 embedded-io = { version = "0.6" }
 
 [[test]]

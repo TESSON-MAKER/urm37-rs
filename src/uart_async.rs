@@ -9,11 +9,31 @@
 //! To add a timeout to UART read operations, implement the [`Read`] trait
 //! in your wrapper using `embassy_time::with_timeout()`. See the example in `main.rs`.
 
+// --- Gestion dynamique de la version d'I/O ---
+#[cfg(not(any(feature = "embedded-io-06", feature = "embedded-io-07")))]
+compile_error!(
+    "The 'uart-async' feature of 'urm37' requires enabling either 'embedded-io-06' or 'embedded-io-07'."
+);
+
+// Pour embedded-io 0.6
+#[cfg(feature = "embedded-io-06")]
+use embedded_io_06_crate as embedded_io;
+#[cfg(feature = "embedded-io-06")]
+use embedded_io_async_06_crate as embedded_io_async;
+
+// Pour embedded-io 0.7
+#[cfg(feature = "embedded-io-07")]
+use embedded_io_07_crate as embedded_io;
+#[cfg(feature = "embedded-io-07")]
+use embedded_io_async_07_crate as embedded_io_async;
+
+// Les imports résolus dynamiquement à la compilation
 use embedded_io::ReadExactError;
 use embedded_io_async::{Read, Write};
+// ----------------------------------------------
 
 use crate::error::Error;
-use crate::protocol::{Frame, EepromRegister, encode_threshold};
+use crate::protocol::{encode_threshold, EepromRegister, Frame};
 
 /// **Asynchronous (Non-blocking)** URM37 UART driver.
 ///
