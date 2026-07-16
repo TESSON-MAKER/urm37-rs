@@ -1,6 +1,6 @@
 [package]
 name = "urm37"
-version = "1.1.1"
+version = "1.1.2"
 edition = "2024"
 authors = ["Paul TESSON <paul.tesson.officiel@gmail.com>"]
 description = "Platform-agnostic no_std driver for the DFRobot URM37 V4.0 ultrasonic distance sensor (UART, PWM, Analog)"
@@ -14,8 +14,8 @@ readme = "README.md"
 [dependencies]
 embedded-hal       = { version = "1.0", optional = true }
 embedded-hal-async = { version = "1.0", optional = true }
-embedded-io        = { version = "0.7", optional = true }
-embedded-io-async  = { version = "0.7", optional = true }
+embedded-io        = { version = "0.6", optional = true }
+embedded-io-async  = { version = "0.6", optional = true }
 defmt              = { version = "1.0", optional = true }
 
 [features]
@@ -41,7 +41,7 @@ analog = ["dep:embedded-hal"]
 defmt = ["dep:defmt"]
 
 [dev-dependencies]
-embedded-io = { version = "0.7" }
+embedded-io = { version = "0.6" }
 
 [[test]]
 name = "protocol"
