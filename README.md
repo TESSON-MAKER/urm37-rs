@@ -289,9 +289,9 @@ cargo run --example stm32_analog --features analog --release
 ```toml
 [dependencies]
 # Choose the features you need:
-urm37 = { version = "1.1.1", features = ["uart-async"] }
+urm37 = { version = "1.1.2", features = ["uart-async"] }
 # or
-urm37 = { version = "1.1.1", features = ["uart", "pwm", "analog"] }
+urm37 = { version = "1.1.2", features = ["uart", "pwm", "analog"] }
 ```
 
 ---
