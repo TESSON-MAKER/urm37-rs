@@ -18,10 +18,11 @@ embedded-hal-async = { version = "1.0", optional = true }
 defmt              = { version = "1.0", optional = true }
 
 # --- MULTI-VERSION SUPPORT FOR EMBEDDED-IO ---
-# Internal aliases to handle both versions of I/O in parallel
-embedded-io-06-crate = { package = "embedded-io", version = "0.6", optional = true }
+# We use the standard name "embedded-io" for the 0.6 version to prevent conflicts with dev-dependencies!
+embedded-io = { version = "0.6", optional = true }
 embedded-io-async-06-crate = { package = "embedded-io-async", version = "0.6", optional = true }
 
+# The 0.7 versions are aliased since they don't overlap with dev-dependencies
 embedded-io-07-crate = { package = "embedded-io", version = "0.7", optional = true }
 embedded-io-async-07-crate = { package = "embedded-io-async", version = "0.7", optional = true }
 
@@ -29,8 +30,8 @@ embedded-io-async-07-crate = { package = "embedded-io-async", version = "0.7", o
 # By default, we enable blocking mode and target the embedded-io 0.6 ecosystem
 default = ["blocking", "embedded-io-06"]
 
-# I/O Version selection (the user chooses only one)
-embedded-io-06 = ["dep:embedded-io-06-crate", "dep:embedded-io-async-06-crate"]
+# I/O Version selection
+embedded-io-06 = ["dep:embedded-io", "dep:embedded-io-async-06-crate"]
 embedded-io-07 = ["dep:embedded-io-07-crate", "dep:embedded-io-async-07-crate"]
 
 # Blocking (synchronous) UART mode (enabled by default)
@@ -53,7 +54,7 @@ analog = ["dep:embedded-hal"]
 defmt = ["dep:defmt"]
 
 [dev-dependencies]
-# Local tests will use version 0.6 by default
+# This now matches the exact name and version of our 0.6 dependency, resolving the conflict!
 embedded-io = { version = "0.6" }
 
 [[test]]
