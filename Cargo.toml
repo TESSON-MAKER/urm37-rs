@@ -1,6 +1,6 @@
 [package]
 name = "urm37"
-version = "1.2.0"
+version = "1.1.1"
 edition = "2024"
 authors = ["Paul TESSON <paul.tesson.officiel@gmail.com>"]
 description = "Platform-agnostic no_std driver for the DFRobot URM37 V4.0 ultrasonic distance sensor (UART, PWM, Analog)"
@@ -12,35 +12,22 @@ categories = ["embedded", "no-std", "hardware-support"]
 readme = "README.md"
 
 [dependencies]
-# Standard hardware HALs
 embedded-hal       = { version = "1.0", optional = true }
 embedded-hal-async = { version = "1.0", optional = true }
+embedded-io        = { version = "0.7", optional = true }
+embedded-io-async  = { version = "0.7", optional = true }
 defmt              = { version = "1.0", optional = true }
 
-# --- MULTI-VERSION SUPPORT FOR EMBEDDED-IO ---
-# We use the standard name "embedded-io" for the 0.6 version to prevent conflicts with dev-dependencies!
-embedded-io = { version = "0.6", optional = true }
-embedded-io-async-06-crate = { package = "embedded-io-async", version = "0.6", optional = true }
-
-# The 0.7 versions are aliased since they don't overlap with dev-dependencies
-embedded-io-07-crate = { package = "embedded-io", version = "0.7", optional = true }
-embedded-io-async-07-crate = { package = "embedded-io-async", version = "0.7", optional = true }
-
 [features]
-# By default, we enable blocking mode and target the embedded-io 0.6 ecosystem
-default = ["blocking", "embedded-io-06"]
+default = ["blocking"]
 
-# I/O Version selection
-embedded-io-06 = ["dep:embedded-io", "dep:embedded-io-async-06-crate"]
-embedded-io-07 = ["dep:embedded-io-07-crate", "dep:embedded-io-async-07-crate"]
+# Blocking (synchronous) UART mode (embedded-io) - activated by default
+blocking = ["dep:embedded-io"]
 
-# Blocking (synchronous) UART mode (enabled by default)
-blocking = []
+# Async (non-blocking) UART mode (embedded-io-async)
+async = ["dep:embedded-io-async"]
 
-# Async (non-blocking) UART mode
-async = []
-
-# Backward compatibility aliases (your test code will keep working)
+# Backward compatibility aliases
 uart = ["blocking"]
 uart-async = ["async"]
 
@@ -54,8 +41,7 @@ analog = ["dep:embedded-hal"]
 defmt = ["dep:defmt"]
 
 [dev-dependencies]
-# This now matches the exact name and version of our 0.6 dependency, resolving the conflict!
-embedded-io = { version = "0.6" }
+embedded-io = { version = "0.7" }
 
 [[test]]
 name = "protocol"

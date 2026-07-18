@@ -4,23 +4,8 @@
 //!
 //! Simple blocking UART interface. Works with any `embedded_io::Read + Write`.
 
-// --- Dynamic I/O Version Management ---
-#[cfg(not(any(feature = "embedded-io-06", feature = "embedded-io-07")))]
-compile_error!(
-    "The 'blocking' feature of 'urm37' requires enabling either 'embedded-io-06' or 'embedded-io-07'."
-);
-
-// For embedded-io 0.6
-#[cfg(feature = "embedded-io-06")]
-use embedded_io;
-
-// For embedded-io 0.7
-#[cfg(feature = "embedded-io-07")]
-use embedded_io_07_crate as embedded_io;
-
 // Dynamically resolved imports during compilation
 use embedded_io::{Read, ReadExactError, Write};
-// ----------------------------------------------
 
 use crate::error::Error;
 use crate::protocol::{encode_threshold, EepromRegister, Frame};
